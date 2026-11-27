@@ -33,7 +33,13 @@ if TYPE_CHECKING:
         FakeModerationBackend as FakeModerationBackend,
     )
     from tempest_fastapi_sdk.testing.fakes.genai import (
+        FakeStructuredBackend as FakeStructuredBackend,
+    )
+    from tempest_fastapi_sdk.testing.fakes.genai import (
         FakeTextBackend as FakeTextBackend,
+    )
+    from tempest_fastapi_sdk.testing.fakes.genai import (
+        StructuredRequest as StructuredRequest,
     )
     from tempest_fastapi_sdk.testing.fakes.geo import (
         FakeGeocodingBackend as FakeGeocodingBackend,
@@ -85,11 +91,13 @@ _EXPORTS: dict[str, str] = {
     "FakePushDispatcher": "push",
     "FakeRevenueCatClient": "subscriptions",
     "FakeRoutingBackend": "geo",
+    "FakeStructuredBackend": "genai",
     "FakeTextBackend": "genai",
     "FakeWebSearchBackend": "search",
     "MercadoPagoDelivery": "mercado_pago",
     "SentEmail": "email",
     "SentPush": "push",
+    "StructuredRequest": "genai",
     "build_mercado_pago_delivery": "mercado_pago",
 }
 

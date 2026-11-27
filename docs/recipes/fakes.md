@@ -83,6 +83,7 @@ alguém abrindo uma disputa. Aqui é uma chamada.
 | `FakeObjectStorageClient` | `SubjectStorageClient` (MinIO / S3) | `fail_delete(chaves)`, `objects`, `deleted` |
 | `FakePayoutProvider` | `PayoutProvider` (saque Pix) | `transfers`, `status=` no construtor |
 | `FakeTextBackend` | `TextBackend` (modelo local) | `queue(...)`, `prompts` |
+| `FakeStructuredBackend` | `chat_structured` / `generate_structured` do `OllamaGenerator` | `queue(instancia)`, `requests`, `prompts` |
 | `FakeModerationBackend` | `ModerationBackend` | `flag(substring)`, `checked` |
 | `FakePushDispatcher` | `PushDispatcher` (FCM/APNs/WebPush) | `sent`, `sent_to(token)` |
 | `FakeEmailUtils` | `EmailUtils` (SMTP) | `outbox`, `sent_to(address)` |
@@ -241,6 +242,74 @@ Esgotada a fila, a resposta default **ecoa o prompt** — assim uma asserção
 que falha diz qual prompt a produziu, em vez de mostrar um texto genérico. O
 `stream` entrega pedaço por pedaço, para o seu render incremental ser de fato
 exercitado.
+
+## Saída estruturada: `FakeStructuredBackend`
+
+Use quando a rota chama `chat_structured` ou `generate_structured` e o teste
+precisa escolher o objeto que o modelo "devolveu".
+
+```python
+import asyncio
+
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk.testing.fakes import FakeStructuredBackend
+
+
+class Invoice(BaseModel):
+    """The fields the model fills."""
+
+    number: str
+    total_cents: int
+
+
+async def main() -> None:
+    """Answer with a queued instance, then show what was recorded."""
+    backend = FakeStructuredBackend()
+    backend.queue(Invoice(number="42", total_cents=1990))
+
+    invoice = await backend.generate_structured(
+        "Nota 42, total R$ 19,90",
+        Invoice,
+        system="Extraia o número e o total.",
+        think="low",
+    )
+    print(invoice)
+    print(backend.requests[0].messages)
+    print(backend.requests[0].think)
+
+    try:
+        await backend.chat_structured([], Invoice)
+    except LookupError as error:
+        print(error)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Saída:
+
+```text
+number='42' total_cents=1990
+[{'role': 'system', 'content': 'Extraia o número e o total.'}, {'role': 'user', 'content': 'Nota 42, total R$ 19,90'}]
+low
+FakeStructuredBackend has no reply queued for Invoice; call queue(Invoice(...)) first
+```
+
+| Superfície | O que faz |
+| --- | --- |
+| `queue(*instancias)` | Enfileira instâncias Pydantic, uma por chamada, em ordem. |
+| `chat_structured(messages, schema, *, config, think, truncate, **kwargs)` | Mesma assinatura do `OllamaGenerator`; devolve a próxima da fila. |
+| `generate_structured(prompt, schema, *, system, config, think, truncate, **kwargs)` | Idem; registra `system` e `prompt` como turnos, como o `OllamaGenerator` monta. |
+| `requests` | Lista de `StructuredRequest`: `method`, `messages`, `schema`, `config`, `think`, `truncate`, `options`. |
+| `prompts` | O conteúdo do último turno de cada chamada. |
+| fila vazia | `LookupError` com o nome do schema — o fake não inventa instância. |
+| instância de outro schema | `TypeError` nomeando os dois. |
+
+Ele também satisfaz o protocolo `StructuredTextBackend`. Para trocar o
+gerador numa rota pelo `dependency_overrides`, com login e lifespan, veja
+[Testes: trocar o LLM por um fake numa rota](testing.md#trocar-o-llm-por-um-fake-numa-rota).
 
 ## Geo: sem Nominatim, sem OSRM
 
@@ -419,14 +488,17 @@ Por isso `tests/testing/test_fakes_contract.py` compara, para cada fake:
 - que é `async` exatamente onde a costura é `async` — um substituto sync
   passaria numa checagem por nome e bloquearia o event loop;
 - e que todo fake exportado está coberto: fake novo sem entrada na tabela
-  falha o guard, em vez de shippar sem checagem.
+  falha o guard, em vez de shippar sem checagem;
+- e, para o `FakeStructuredBackend`, que `chat_structured` e
+  `generate_structured` batem com os do `OllamaGenerator` parâmetro a
+  parâmetro, com tipo de parâmetro (posicional, keyword-only) e default.
 
 Medido: com um parâmetro renomeado de `max_results` para `limit`, o guard
 falha com `['self', 'query', 'limit'] == ['self', 'query', 'max_results']`.
 
 ## Recap
 
-- `from tempest_fastapi_sdk.testing.fakes import Fake...` — onze costuras, sem
+- `from tempest_fastapi_sdk.testing.fakes import Fake...` — doze costuras, sem
   credencial e sem rede.
 - Fake não é mock: guarda estado, e você **move** esse estado
   (`advance`, `flag`, `add_place`, `queue`).

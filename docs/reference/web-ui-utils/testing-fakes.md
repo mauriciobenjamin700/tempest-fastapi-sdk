@@ -11,6 +11,8 @@ Dublês dos terceiros com que um serviço conversa.
 ::: tempest_fastapi_sdk.testing.fakes.storage.FakeObjectStorageClient
 ::: tempest_fastapi_sdk.testing.fakes.payment.FakePayoutProvider
 ::: tempest_fastapi_sdk.testing.fakes.genai.FakeTextBackend
+::: tempest_fastapi_sdk.testing.fakes.genai.FakeStructuredBackend
+::: tempest_fastapi_sdk.testing.fakes.genai.StructuredRequest
 ::: tempest_fastapi_sdk.testing.fakes.genai.FakeModerationBackend
 ::: tempest_fastapi_sdk.testing.fakes.push.FakePushDispatcher
 ::: tempest_fastapi_sdk.testing.fakes.push.SentPush

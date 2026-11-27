@@ -83,6 +83,7 @@ someone opening a dispute. Here it is one call.
 | `FakeObjectStorageClient` | `SubjectStorageClient` (MinIO / S3) | `fail_delete(keys)`, `objects`, `deleted` |
 | `FakePayoutProvider` | `PayoutProvider` (Pix payouts) | `transfers`, `status=` in the constructor |
 | `FakeTextBackend` | `TextBackend` (local model) | `queue(...)`, `prompts` |
+| `FakeStructuredBackend` | `OllamaGenerator`'s `chat_structured` / `generate_structured` | `queue(instance)`, `requests`, `prompts` |
 | `FakeModerationBackend` | `ModerationBackend` | `flag(substring)`, `checked` |
 | `FakePushDispatcher` | `PushDispatcher` (FCM/APNs/WebPush) | `sent`, `sent_to(token)` |
 | `FakeEmailUtils` | `EmailUtils` (SMTP) | `outbox`, `sent_to(address)` |
@@ -240,6 +241,74 @@ Once the queue is empty, the default reply **echoes the prompt** — so a failed
 assertion tells you which prompt produced it, instead of showing generic text.
 `stream` hands the reply over piece by piece, so your incremental rendering is
 actually exercised.
+
+## Structured output: `FakeStructuredBackend`
+
+Use it when the route calls `chat_structured` or `generate_structured` and the
+test has to choose the object the model "returned".
+
+```python
+import asyncio
+
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk.testing.fakes import FakeStructuredBackend
+
+
+class Invoice(BaseModel):
+    """The fields the model fills."""
+
+    number: str
+    total_cents: int
+
+
+async def main() -> None:
+    """Answer with a queued instance, then show what was recorded."""
+    backend = FakeStructuredBackend()
+    backend.queue(Invoice(number="42", total_cents=1990))
+
+    invoice = await backend.generate_structured(
+        "Invoice 42, total $19.90",
+        Invoice,
+        system="Extract the number and the total.",
+        think="low",
+    )
+    print(invoice)
+    print(backend.requests[0].messages)
+    print(backend.requests[0].think)
+
+    try:
+        await backend.chat_structured([], Invoice)
+    except LookupError as error:
+        print(error)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Output:
+
+```text
+number='42' total_cents=1990
+[{'role': 'system', 'content': 'Extract the number and the total.'}, {'role': 'user', 'content': 'Invoice 42, total $19.90'}]
+low
+FakeStructuredBackend has no reply queued for Invoice; call queue(Invoice(...)) first
+```
+
+| Surface | What it does |
+| --- | --- |
+| `queue(*instances)` | Queues Pydantic instances, one per call, in order. |
+| `chat_structured(messages, schema, *, config, think, truncate, **kwargs)` | Same signature as `OllamaGenerator`; returns the next queued instance. |
+| `generate_structured(prompt, schema, *, system, config, think, truncate, **kwargs)` | Likewise; records `system` and `prompt` as turns, the way `OllamaGenerator` builds them. |
+| `requests` | A list of `StructuredRequest`: `method`, `messages`, `schema`, `config`, `think`, `truncate`, `options`. |
+| `prompts` | The content of the last turn of each call. |
+| empty queue | `LookupError` naming the schema — the fake does not invent an instance. |
+| instance of another schema | `TypeError` naming both. |
+
+It also satisfies the `StructuredTextBackend` protocol. To swap the generator
+in a route through `dependency_overrides`, with login and the lifespan, see
+[Testing: swap the LLM for a fake in a route](testing.md#swap-the-llm-for-a-fake-in-a-route).
 
 ## Geo: no Nominatim, no OSRM
 
@@ -417,14 +486,17 @@ So `tests/testing/test_fakes_contract.py` compares, for every fake:
 - that it is `async` exactly where the seam is `async` — a sync stand-in would
   pass a name-only check and block the event loop;
 - and that every exported fake is covered: a new fake with no entry in the
-  table fails the guard instead of shipping unchecked.
+  table fails the guard instead of shipping unchecked;
+- and, for `FakeStructuredBackend`, that `chat_structured` and
+  `generate_structured` match `OllamaGenerator`'s parameter by parameter,
+  with parameter kind (positional, keyword-only) and default.
 
 Measured: with one parameter renamed from `max_results` to `limit`, the guard
 fails with `['self', 'query', 'limit'] == ['self', 'query', 'max_results']`.
 
 ## Recap
 
-- `from tempest_fastapi_sdk.testing.fakes import Fake...` — eleven seams, no
+- `from tempest_fastapi_sdk.testing.fakes import Fake...` — twelve seams, no
   credentials and no network.
 - A fake is not a mock: it holds state, and you **move** that state
   (`advance`, `flag`, `add_place`, `queue`).
