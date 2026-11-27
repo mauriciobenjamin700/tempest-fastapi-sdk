@@ -605,7 +605,7 @@ Four dependency factories live in `tempest_fastapi_sdk.api.dependencies.auth` �
     ```
 
 !!! tip "Using the bundled flow? Skip `load_user`"
-    If you wire auth with `UserAuthService` + `make_auth_router`, you don't write `load_user` or instantiate a `JWTUtils` here — call `auth_service.current_user_dependency()` (and `.current_user_dependency(soft=True)`), which reuses the service's internal `JWTUtils`. See the [auth recipe »](auth-flow.en.md#getting-the-current_user-from-the-request). The example below is the manual wiring, for when you're **not** using the service.
+    If you wire auth with `UserAuthService` + `make_auth_router`, you don't write `load_user` or instantiate a `JWTUtils` here — call `auth_service.current_user_dependency()` (and `.current_user_dependency(soft=True)`), which reuses the service's internal `JWTUtils`. See the [auth recipe »](auth-flow/current-user.md). The example below is the manual wiring, for when you're **not** using the service.
 
 ```python
 # src/api/dependencies/auth.py

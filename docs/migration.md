@@ -548,7 +548,7 @@ Conta antiga fica com `NULL`, então **deixa de ser ligada por e-mail** (`409
 OAUTH_EMAIL_TAKEN`) até provar o endereço — por `POST /auth/email-verify/request`
 e o link que chega na caixa de entrada. Serviço com o knob desligado (o
 default) não muda nada além da migration. O que preenche e o que limpa a coluna
-está em [O que conta como e-mail verificado](recipes/auth-flow.md#o-que-conta-como-e-mail-verificado).
+está em [O que conta como e-mail verificado](recipes/auth-flow/email-change.md#o-que-conta-como-e-mail-verificado).
 
 ### O que fazer
 

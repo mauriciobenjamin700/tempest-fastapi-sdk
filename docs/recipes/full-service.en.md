@@ -9,7 +9,7 @@ here it shows up where it fits.
 | File | What it does | Recipe for the piece |
 | --- | --- | --- |
 | `src/core/settings.py` | composes the settings mixins | [Settings](settings.md) |
-| `src/db/models.py` | users table and tokens table | [Auth flow](auth-flow.md#concrete-usertokenmodel) |
+| `src/db/models.py` | users table and tokens table | [Auth flow](auth-flow/setup.md#concrete-usertokenmodel) |
 | `src/db/migrations.py` | `sync_schema_async()` in the lifespan | [Migrations](migrations.md#3-sync-the-schema-in-the-lifespan) |
 | `src/api/dependencies/resources.py` | database, `UserAuthService`, `UploadUtils` | [Uploads](uploads.md#quick-reference) |
 | `src/api/routers/files.py` | upload guarded by `current_user_dependency()` | [Uploads — protected route](uploads.md#upload-for-logged-in-users-only) |
@@ -147,7 +147,7 @@ UPLOAD_ALLOWED_EXTENSIONS=[".png", ".jpg", ".pdf"]
 !!! tip "No email in development"
     `AUTH_AUTO_ACTIVATE=true` makes the account active at `signup`, so login
     works without SMTP. For the flow with an activation email, see
-    [Auth flow](auth-flow.md#backend-only-from-signup-to-a-protected-route).
+    [Auth flow](auth-flow/backend-only.md).
 
 ## Declare the user models
 

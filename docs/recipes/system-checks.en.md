@@ -502,7 +502,7 @@ What each integration does when switched off:
 The auth flow honours the e-mail switch too: with `EmailUtils(enabled=False)`
 wired into `UserAuthService`, every `make_auth_router` route that would
 send a link answers `503 INTEGRATION_DISABLED` **before** writing
-anything — see [Auth flow](auth-flow.md#email-disabled).
+anything — see [Auth flow](auth-flow/email-failures.md#email-disabled).
 
 ## Recap
 

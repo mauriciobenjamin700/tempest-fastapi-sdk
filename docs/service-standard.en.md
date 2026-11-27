@@ -302,7 +302,7 @@ subclass; a field that is a column lands on the row before the insert),
 transaction) and `me_response_model=` (an `AuthUserSchema` subclass,
 returned by `GET /auth/me`). The three appear together in one complete
 example in the
-[auth recipe](recipes/auth-flow.md#an-account-born-with-more-than-email-and-password-v02780).
+[auth recipe](recipes/auth-flow/endpoints.md#an-account-born-with-more-than-email-and-password-v02780).
 
 !!! warning "The whole prefix goes in `prefix=`, with the router mounted on the app"
     `make_auth_router` writes its own prefix into the refresh cookie's

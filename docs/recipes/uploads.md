@@ -287,7 +287,7 @@ O `get_current_user` é construído uma vez, ao lado do `UserAuthService`:
 
 - `subdir=str(current.id)` separa os arquivos por dono.
 - Modo `soft`, cookie e sessão compartilhada do `current_user_dependency()`:
-  [Auth flow](auth-flow.md#pegando-o-current_user-da-requisicao).
+  [Auth flow](auth-flow/current-user.md).
 
 ## Restringir extensões (allowlist)
 

@@ -425,7 +425,7 @@ No SMTP yet? `EMAIL_ENABLED=false` skips those rules, and the same
 `details={"integration": "email"}`) before building the message.
 `render_template` keeps working, and the `[email]` extra is not required.
 The auth flow refuses the signup **before** creating the account — see
-[Email disabled](auth-flow.md#email-disabled) and
+[Email disabled](auth-flow/email-failures.md#email-disabled) and
 [Switching integrations on and off](system-checks.md#switching-integrations-on-and-off-phased-deploys).
 
 ## Recap
@@ -437,4 +437,4 @@ The auth flow refuses the signup **before** creating the account — see
 - `render_template()` (with `template_dir`) builds the HTML from Jinja2.
 - The bundled auth flow already sends activation/reset with overridable templates.
 - Port `587` needs `SMTP_USE_TLS=true`; `465` needs `SMTP_USE_SSL=true` — the production guard refuses the swapped pair.
-- An SMTP failure raises `EmailDeliveryException` (`503 EMAIL_UNAVAILABLE`); see [SMTP server down](auth-flow.md#smtp-server-down) for what each auth route answers.
+- An SMTP failure raises `EmailDeliveryException` (`503 EMAIL_UNAVAILABLE`); see [SMTP server down](auth-flow/email-failures.md#smtp-server-down) for what each auth route answers.

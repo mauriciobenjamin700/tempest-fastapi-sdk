@@ -120,7 +120,21 @@ plugins:
               - AI agents (tools): recipes/agents-tools.md
               - App error reports: recipes/app-errors.md
               - Audit trail: recipes/audit-trail.md
-              - Auth flow (signup/reset): recipes/auth-flow.md
+              - Auth flow (signup/reset):
+                  - "Index": recipes/auth-flow.md
+                  - "Backend only: from signup to a protected route": recipes/auth-flow/backend-only.md
+                  - "Change and recover an email": recipes/auth-flow/email-change.md
+                  - "Email disabled and SMTP down": recipes/auth-flow/email-failures.md
+                  - "Emails: anatomy, brand and templates": recipes/auth-flow/emails.md
+                  - "Endpoints": recipes/auth-flow/endpoints.md
+                  - "Five operating modes and local SMTP": recipes/auth-flow/modes.md
+                  - "Get the `current_user` from the request": recipes/auth-flow/current-user.md
+                  - "Language of emails, pages and `/docs`": recipes/auth-flow/i18n.md
+                  - "Minimum setup and `UserTokenModel`": recipes/auth-flow/setup.md
+                  - "Re-send activation and recover a password": recipes/auth-flow/recovery.md
+                  - "Settings: environment variables": recipes/auth-flow/settings.md
+                  - "Token delivery: bearer, cookie or both": recipes/auth-flow/token-delivery.md
+                  - "Your product's error codes": recipes/auth-flow/errors.md
               - Brazilian helpers: recipes/br-helpers.md
               - Cache: recipes/cache.md
               - Chat (conversations + messages): recipes/chat.md
@@ -562,7 +576,21 @@ nav:
       - "Artefatos versionados (modelos)": recipes/artifact-registry.md
       - Audit trail: recipes/audit-trail.md
       - "Auth Firebase (ID token)": recipes/firebase-auth.md
-      - Auth flow (signup/reset): recipes/auth-flow.md
+      - Auth flow (signup/reset):
+          - "Índice": recipes/auth-flow.md
+          - "Cinco modos de operação e SMTP local": recipes/auth-flow/modes.md
+          - "Códigos de erro do seu produto": recipes/auth-flow/errors.md
+          - "E-mail desligado e SMTP fora do ar": recipes/auth-flow/email-failures.md
+          - "E-mails: anatomia, marca e templates": recipes/auth-flow/emails.md
+          - "Endpoints": recipes/auth-flow/endpoints.md
+          - "Entrega de token: bearer, cookie ou os dois": recipes/auth-flow/token-delivery.md
+          - "Idioma dos e-mails, páginas e `/docs`": recipes/auth-flow/i18n.md
+          - "Pegar o `current_user` da requisição": recipes/auth-flow/current-user.md
+          - "Reenviar ativação e recuperar senha": recipes/auth-flow/recovery.md
+          - "Settings: variáveis de ambiente": recipes/auth-flow/settings.md
+          - "Setup mínimo e `UserTokenModel`": recipes/auth-flow/setup.md
+          - "Só o backend: do cadastro à rota protegida": recipes/auth-flow/backend-only.md
+          - "Trocar e recuperar e-mail": recipes/auth-flow/email-change.md
       - "Auth por introspecção (resource server)": recipes/introspection-auth.md
       - Banco de dados: recipes/database.md
       - Busca aproximada (fuzzy) e cidades em texto: recipes/fuzzy-matching.md

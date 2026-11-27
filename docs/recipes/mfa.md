@@ -518,7 +518,7 @@ TTL curto acabar, mas também é `["pwd"]`, então a dependência acima o recusa
 
 ## Settings
 
-Mixe `AuthSettings` na sua classe `Settings` (como no [recipe de auth flow](auth-flow.md#settings-variaveis-de-ambiente)) e configure por env:
+Mixe `AuthSettings` na sua classe `Settings` (como no [recipe de auth flow](auth-flow/settings.md)) e configure por env:
 
 ```bash
 # .env — MFA

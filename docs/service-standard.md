@@ -299,7 +299,7 @@ Para estender sem reescrever rota: `signup_schema=` (subclasse de
 `on_signup=` (hook `(session, user, payload)` dentro da transação do
 insert) e `me_response_model=` (subclasse de `AuthUserSchema`, devolvida
 pelo `GET /auth/me`). Os três aparecem juntos num exemplo completo na
-[receita de auth](recipes/auth-flow.md#conta-que-nasce-com-mais-que-e-mail-e-senha-v02780).
+[receita de auth](recipes/auth-flow/endpoints.md#conta-que-nasce-com-mais-que-e-mail-e-senha-v02780).
 
 !!! warning "O prefixo inteiro vai no `prefix=`, com o router montado no app"
     O `make_auth_router` escreve o próprio prefixo no `Path` do cookie de

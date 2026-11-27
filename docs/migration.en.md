@@ -549,7 +549,7 @@ OAUTH_EMAIL_TAKEN`) until it proves the address — through
 `POST /auth/email-verify/request` and the link that arrives in the mailbox. A
 service with the knob off (the default) changes nothing beyond the migration.
 What sets and what clears the column is in
-[What counts as a verified email](recipes/auth-flow.md#what-counts-as-a-verified-email).
+[What counts as a verified email](recipes/auth-flow/email-change.md#what-counts-as-a-verified-email).
 
 ### What to do
 
