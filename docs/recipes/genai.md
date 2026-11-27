@@ -852,6 +852,66 @@ dois geradores com defaults diferentes não respondem um pelo cache do outro.
       torna o corte visível. Um prompt que caia exatamente na faixa sem ter
       sido cortado gera um aviso falso — raro, e o remédio é o mesmo.
 
+#### Falhar em vez de cortar: `truncate`
+
+O aviso torna o corte visível, mas a chamada segue com o prompt cortado. Em
+extração de documento, em agente com histórico longo ou em RAG com muitos
+trechos, responder sobre metade do contexto é pior que um erro. Para esses
+casos, passe `truncate=False`: o daemon recusa o prompt que não cabe, e o
+`OllamaGenerator` levanta `OllamaContextExceededError`.
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import OllamaContextExceededError, OllamaGenerator
+
+gen = OllamaGenerator("qwen2.5:0.5b", num_ctx=2048, truncate=False)
+
+
+async def main() -> None:
+    """Run this example."""
+    documento: str = " ".join(f"palavra{i}" for i in range(4000))
+    try:
+        await gen.chat([{"role": "user", "content": documento}])
+    except OllamaContextExceededError as exc:
+        print(exc.prompt_tokens, exc.context_window)
+
+
+asyncio.run(main())
+```
+
+O que o daemon responde foi medido no Ollama 0.30.11 em CPU
+(`qwen2.5:0.5b`, `num_gpu=0`, `num_ctx` 2048, um prompt de 4 000 palavras),
+no `/api/chat` e no `/api/generate`, com e sem `stream`:
+
+| `truncate` no corpo | status | resultado |
+| --- | --- | --- |
+| ausente (o default) | `200` | prompt cortado: `prompt_eval_count` 1026 |
+| `true` | `200` | igual ao ausente: `prompt_eval_count` 1026 |
+| `false` | `400` | `exceed_context_size_error`, antes de qualquer linha do stream |
+
+O corpo do `400` traz os dois tamanhos, e eles vão para a exceção:
+
+```text
+OllamaContextExceededError: Ollama model 'qwen2.5:0.5b' refused a prompt
+longer than its context window (the prompt has 18923 tokens and the context
+window 2048) because truncate=False; raise num_ctx or shorten the prompt
+```
+
+- **`truncate=None`** (o padrão) não manda o campo: o daemon corta, como
+  antes, e o `WARNING` acima continua valendo.
+- O `truncate` da chamada ganha do construtor, e vale nos mesmos seis
+  métodos que o `think` (`generate`, `chat`, `chat_with_tools`, `stream`,
+  `generate_structured`, `chat_structured`). Ele entra na chave do
+  `generation_cache`: uma resposta guardada de um prompt cortado não
+  responde uma chamada com `truncate=False`.
+- `prompt_tokens` e `context_window` ficam `None` quando o corpo do erro não
+  trouxer os tamanhos; a exceção continua sendo `OllamaContextExceededError`.
+- No `stream`, a exceção sai na primeira iteração: o daemon recusa antes de
+  mandar qualquer pedaço.
+- Num prompt que cabe, `truncate=False` não muda nada (medido: `200`, com
+  `prompt_eval_count` 32, nos dois endpoints).
+
 #### Raciocínio: `think`
 
 Modelo de raciocínio (o `gpt-oss`, o `ornith`) aceita o campo `think` no

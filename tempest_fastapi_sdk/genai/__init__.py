@@ -181,6 +181,9 @@ from tempest_fastapi_sdk.genai.music_generation import (
 from tempest_fastapi_sdk.genai.ollama import (
     DEFAULT_OLLAMA_URL as DEFAULT_OLLAMA_URL,
 )
+from tempest_fastapi_sdk.genai.ollama import (
+    OllamaContextExceededError as OllamaContextExceededError,
+)
 from tempest_fastapi_sdk.genai.ollama import OllamaEmbedder as OllamaEmbedder
 from tempest_fastapi_sdk.genai.ollama import OllamaError as OllamaError
 from tempest_fastapi_sdk.genai.ollama import (
@@ -435,6 +438,7 @@ __all__: list[str] = [
     "ModerationBackend",
     "ModerationResult",
     "MusicGenerator",
+    "OllamaContextExceededError",
     "OllamaEmbedder",
     "OllamaError",
     "OllamaFormatIgnoredError",

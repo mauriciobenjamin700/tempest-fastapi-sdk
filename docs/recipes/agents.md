@@ -278,6 +278,18 @@ if __name__ == "__main__":
     [Janela de contexto](genai.md#janela-de-contexto-num_ctx). O aviso
     aponta o problema; quem o resolve é o `num_ctx`.
 
+!!! tip "Quando o agente deve parar em vez de responder sobre metade do prompt"
+    Com `OllamaGenerator(..., truncate=False)`, o prompt que não cabe na
+    janela não é cortado: o daemon recusa, e a execução termina com
+    `stop_reason` `error`, sem mais passos. O último passo guarda
+    `OllamaContextExceededError: ...` com o tamanho do prompt e o da janela,
+    e o `output` da execução é a mesma mensagem. Use quando uma resposta
+    `completed` sobre histórico cortado é pior que uma falha — o caso medido
+    acima, em que o modelo perdeu a pergunta e respondeu errado. Fica de fora
+    quando o agente pode seguir com o início da conversa perdido. Detalhes e
+    os corpos medidos do daemon em
+    [Falhar em vez de cortar](genai.md#falhar-em-vez-de-cortar-truncate).
+
 ## Ferramentas tipadas com Pydantic
 
 Escrever JSON-schema à mão ao lado do handler significa **duas descrições da
