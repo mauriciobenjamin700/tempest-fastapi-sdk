@@ -249,6 +249,11 @@ if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8001)
 ```
 
+!!! info "The `tempest` command needs the `[cli]` extra (or `[cli-ops]` on a server)"
+    Without either, `tempest` exits with code 2 and prints how to install it.
+    In development: `uv add --dev "tempest-fastapi-sdk[cli]"`. Details in
+    [Installation → CLI](../installation.md#cli).
+
 In three terminals (port `8001` here only because `8000` was taken when this
 was measured; `--url` defaults to
 `http://127.0.0.1:8000/webhooks/mercado-pago`):

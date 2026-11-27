@@ -254,6 +254,11 @@ valor do header e quebra de linha divide a resposta em duas.
 
 ## O CLI: o laço de ajustar template
 
+!!! info "O comando `tempest` pede o extra `[cli]` (ou `[cli-ops]` no servidor)"
+    Sem um dos dois, `tempest` sai com código 2 e imprime como instalar. Em
+    desenvolvimento: `uv add --dev "tempest-fastapi-sdk[cli]"`. Detalhes em
+    [Instalação → CLI](../installation.md#cli).
+
 ```bash
 tempest pdf list                                    # o que existe
 tempest pdf schema receipt                          # o payload que ele aceita

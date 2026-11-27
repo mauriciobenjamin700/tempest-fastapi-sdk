@@ -387,6 +387,13 @@ declares `pytest-xdist` in its `dev` group):
 uv add --dev "tempest-fastapi-sdk[tests]"
 ```
 
+!!! info "The `tempest` gates need the `[cli]` extra"
+    `lint`, `fix`, `format`, `fmt-check`, `type`, `test`, `check` and
+    `pr-prompt` come from `[cli]`; with only `[cli-ops]` (the server one),
+    they exit with code 2 pointing at `[cli]`. Install it with
+    `uv add --dev "tempest-fastapi-sdk[cli]"` — details in
+    [Installation → CLI](../installation.md#cli).
+
 Then, the suite:
 
 ```bash

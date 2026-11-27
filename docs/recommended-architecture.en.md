@@ -33,6 +33,11 @@ on strict mode:
 layers_strict = true
 ```
 
+!!! info "The `tempest` command needs the `[cli]` extra (or `[cli-ops]` on a server)"
+    Without either, `tempest` exits with code 2 and prints how to install it.
+    In development: `uv add --dev "tempest-fastapi-sdk[cli]"`. Details in
+    [Installation → CLI](installation.md#cli).
+
 To migrate one rule at a time, filter:
 
 ```bash

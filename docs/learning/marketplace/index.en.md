@@ -13,6 +13,11 @@ Multi-tenant sales platform **Mercado Livre / Shopee** style, no external integr
 
 ## Project setup (5 min)
 
+!!! info "The `tempest` command needs the `[cli]` extra (or `[cli-ops]` on a server)"
+    Without either, `tempest` exits with code 2 and prints how to install it.
+    In development: `uv add --dev "tempest-fastapi-sdk[cli]"`. Details in
+    [Installation → CLI](../../installation.md#cli).
+
 ```bash
 # 1. Scaffold via SDK
 tempest new marketplace --extras auth,admin,upload,cache,email,minio,queue,tasks,metrics,prometheus,http,webpush

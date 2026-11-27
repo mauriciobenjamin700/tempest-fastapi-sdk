@@ -383,6 +383,13 @@ Primeiro, o que a suíte precisa — o extra `[tests]` traz `pytest`,
 uv add --dev "tempest-fastapi-sdk[tests]"
 ```
 
+!!! info "Os gates do `tempest` pedem o extra `[cli]`"
+    `lint`, `fix`, `format`, `fmt-check`, `type`, `test`, `check` e
+    `pr-prompt` vêm do `[cli]`; com só o `[cli-ops]` (o do servidor), eles
+    saem com código 2 apontando o `[cli]`. Instale com
+    `uv add --dev "tempest-fastapi-sdk[cli]"` — detalhes em
+    [Instalação → CLI](../installation.md#cli).
+
 Depois, a suíte:
 
 ```bash

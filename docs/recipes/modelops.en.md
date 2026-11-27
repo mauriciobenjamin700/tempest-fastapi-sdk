@@ -1233,6 +1233,11 @@ version?" on a schedule without touching the graph.
 Measuring comes first. Without `tempest model bench` you have no baseline
 to tell whether quantization helped.
 
+!!! info "The `tempest` command needs the `[cli]` extra (or `[cli-ops]` on a server)"
+    Without either, `tempest` exits with code 2 and prints how to install it.
+    In development: `uv add --dev "tempest-fastapi-sdk[cli]"`. Details in
+    [Installation → CLI](../installation.md#cli).
+
 ```bash
 tempest model bench models/classify.onnx --repetitions 50 --warmup 10
 ```

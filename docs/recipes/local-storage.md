@@ -493,6 +493,11 @@ durante a migração:
 
 2. Cifre o que existe, de preferência numa janela sem escrita:
 
+    !!! info "O comando `tempest` pede o extra `[cli]` (ou `[cli-ops]` no servidor)"
+        Sem um dos dois, `tempest` sai com código 2 e imprime como instalar. Em
+        desenvolvimento: `uv add --dev "tempest-fastapi-sdk[cli]"`. Detalhes em
+        [Instalação → CLI](../installation.md#cli).
+
     ```bash
     tempest storage encrypt-local
     ```

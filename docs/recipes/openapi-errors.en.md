@@ -582,6 +582,11 @@ The risk of an explicit declaration is that it goes stale. Since the project
 convention already requires a `Raises:` section on every docstring, this can be
 verified **without runtime magic**:
 
+!!! info "The `tempest` command needs the `[cli]` extra (or `[cli-ops]` on a server)"
+    Without either, `tempest` exits with code 2 and prints how to install it.
+    In development: `uv add --dev "tempest-fastapi-sdk[cli]"`. Details in
+    [Installation → CLI](../installation.md#cli).
+
 ```bash
 tempest openapi-errors --check
 ```

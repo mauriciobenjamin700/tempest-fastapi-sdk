@@ -4625,6 +4625,11 @@ over their own data. And the listing **does not return the embedding** — they
 need to know the profile exists, not to receive a copy of their own biometric
 template over HTTP.
 
+!!! info "The `tempest` command needs the `[cli]` extra (or `[cli-ops]` on a server)"
+    Without either, `tempest` exits with code 2 and prints how to install it.
+    In development: `uv add --dev "tempest-fastapi-sdk[cli]"`. Details in
+    [Installation → CLI](../installation.md#cli).
+
 From the shell:
 
 ```bash

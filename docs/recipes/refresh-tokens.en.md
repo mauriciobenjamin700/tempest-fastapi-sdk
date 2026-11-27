@@ -84,6 +84,11 @@ class UserRefreshTokenModel(BaseUserRefreshTokenModel):
 
 The table carries: `token_hash` (unique, indexed), `family_id` (rotation lineage), `expires_at`, `used_at` (rotated), and `revoked_at` (logout / family kill).
 
+!!! info "The `tempest` command needs the `[cli]` extra (or `[cli-ops]` on a server)"
+    Without either, `tempest` exits with code 2 and prints how to install it.
+    In development: `uv add --dev "tempest-fastapi-sdk[cli]"`. Details in
+    [Installation → CLI](../installation.md#cli).
+
 !!! warning "Migration required"
     It is a new table. Run `uv run tempest db revision -m "refresh tokens"` + `uv run tempest db upgrade` before shipping.
 

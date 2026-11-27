@@ -59,6 +59,11 @@ class UserModel(MFAMixin, BaseUserModel):
 !!! note "Ordem do MRO"
     O mixin vem **antes** do `BaseUserModel` na lista de bases — mesmo padrão de `AuditMixin` / `SoftDeleteMixin`. O mixin também expõe a property `is_mfa_active` (`totp_enabled_at is not None`).
 
+!!! info "O comando `tempest` pede o extra `[cli]` (ou `[cli-ops]` no servidor)"
+    Sem um dos dois, `tempest` sai com código 2 e imprime como instalar. Em
+    desenvolvimento: `uv add --dev "tempest-fastapi-sdk[cli]"`. Detalhes em
+    [Instalação → CLI](../installation.md#cli).
+
 !!! warning "Migration obrigatória"
     `totp_secret`, `totp_enabled_at` e `totp_last_step` são colunas novas. Rode `uv run tempest db revision -m "mfa columns"` + `uv run tempest db upgrade` antes de ligar a flag.
 

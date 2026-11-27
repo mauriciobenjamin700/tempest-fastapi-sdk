@@ -497,6 +497,11 @@ What neither layer reaches: a guard whose `raise` sits behind an `if` no test
 exercises, or a guard that is never imported. The command reads the contract off
 the source with `ast`, without importing the application:
 
+!!! info "The `tempest` command needs the `[cli]` extra (or `[cli-ops]` on a server)"
+    Without either, `tempest` exits with code 2 and prints how to install it.
+    In development: `uv add --dev "tempest-fastapi-sdk[cli]"`. Details in
+    [Installation → CLI](../installation.md#cli).
+
 ```bash
 tempest permissions                    # informative report (exit 0)
 tempest permissions --check            # exit 1 on any error (CI gate)

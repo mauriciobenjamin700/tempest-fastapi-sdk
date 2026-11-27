@@ -493,6 +493,11 @@ O que nenhuma das duas alcança: guard cujo `raise` está atrás de um `if` que
 nenhum teste exercita, ou guard nunca importado. O comando lê o contrato do
 código-fonte com `ast`, sem importar a aplicação:
 
+!!! info "O comando `tempest` pede o extra `[cli]` (ou `[cli-ops]` no servidor)"
+    Sem um dos dois, `tempest` sai com código 2 e imprime como instalar. Em
+    desenvolvimento: `uv add --dev "tempest-fastapi-sdk[cli]"`. Detalhes em
+    [Instalação → CLI](../installation.md#cli).
+
 ```bash
 tempest permissions                    # relatório informativo (exit 0)
 tempest permissions --check            # exit 1 se houver erro (gate de CI)

@@ -29,6 +29,11 @@ def backfill(dry_run: bool = False) -> None:
     typer.echo(f"backfill (dry_run={dry_run})")
 ```
 
+!!! info "O comando `tempest` pede o extra `[cli]` (ou `[cli-ops]` no servidor)"
+    Sem um dos dois, `tempest` sai com código 2 e imprime como instalar. Em
+    desenvolvimento: `uv add --dev "tempest-fastapi-sdk[cli]"`. Detalhes em
+    [Instalação → CLI](../installation.md#cli).
+
 Rode da raiz do projeto:
 
 ```bash

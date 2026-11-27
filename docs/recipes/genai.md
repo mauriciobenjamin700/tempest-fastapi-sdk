@@ -4603,6 +4603,11 @@ As rotas de listar e apagar não são cortesia: são o direito da pessoa sobre o
 próprio dado. E a listagem **não devolve o embedding** — ela precisa saber que
 o perfil existe, não receber uma cópia do próprio template biométrico por HTTP.
 
+!!! info "O comando `tempest` pede o extra `[cli]` (ou `[cli-ops]` no servidor)"
+    Sem um dos dois, `tempest` sai com código 2 e imprime como instalar. Em
+    desenvolvimento: `uv add --dev "tempest-fastapi-sdk[cli]"`. Detalhes em
+    [Instalação → CLI](../installation.md#cli).
+
 Da linha de comando:
 
 ```bash
