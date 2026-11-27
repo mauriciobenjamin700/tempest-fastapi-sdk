@@ -1,3 +1,7 @@
+---
+description: "Use quando uma regra de negócio faz várias escritas que devem confirmar juntas; contém `transaction()`, `commit()` explícito, `autocommit=False`, `savepoint()` e aninhamento."
+---
+
 # Transações (commit e savepoint)
 
 Todo método de escrita do `BaseRepository` faz `COMMIT` sozinho. Para uma

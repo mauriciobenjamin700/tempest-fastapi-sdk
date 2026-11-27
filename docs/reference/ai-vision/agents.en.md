@@ -1,3 +1,7 @@
+---
+description: "AI agents over the models you already self-host."
+---
+
 # API Reference: `tempest_fastapi_sdk.agents`
 
 AI agents over the models you already self-host.

@@ -1,3 +1,7 @@
+---
+description: "Use to transcribe audio (STT) and generate speech (TTS), and to pick the language and voice model by licence and where it runs."
+---
+
 # Audio: STT and TTS
 
 Use to transcribe audio (STT) and generate speech (TTS), and to pick the language and voice model by licence and where it runs.

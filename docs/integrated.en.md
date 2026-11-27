@@ -1,3 +1,7 @@
+---
+description: "Use to see an end-to-end Pix checkout: JWT auth, `@cached` pricing, outbox in the same transaction, background email and SSE + Web Push notification."
+---
+
 # Integrated example — Pix checkout
 
 The [SDK tour](recipes/index.md#sdk-tour-one-example-per-block) shows each piece in isolation. Here they work

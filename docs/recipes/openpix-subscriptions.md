@@ -1,3 +1,7 @@
+---
+description: "Use para cobrança recorrente na OpenPix; contém criar assinatura, `RECURRENT` x `PIX_RECURRING`, receber cada ciclo, ciclo de vida, mudar valor e o estado do seu lado."
+---
+
 # OpenPix (assinaturas e planos)
 
 Esta receita cobre cobrança **recorrente**: mensalidade, plano anual, Pix

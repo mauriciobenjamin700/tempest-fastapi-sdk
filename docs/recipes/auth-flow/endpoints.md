@@ -1,3 +1,7 @@
+---
+description: "Consulte todos os endpoints do fluxo de auth com payload e comportamento; contém sistema fechado, conta criada pelo admin, campos extras no cadastro e limite de tentativas."
+---
+
 # Endpoints
 
 Consulte a tabela de todos os endpoints com payload e comportamento: sistema fechado, conta criada pelo admin, campos extras no cadastro e limite de tentativas.

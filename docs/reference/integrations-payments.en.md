@@ -1,3 +1,7 @@
+---
+description: "Index of the integration modules: payments contract, Mercado Pago, OpenPix, Stripe, RevenueCat, Google Drive upload, Pix wallet, WhatsApp gateway and app error reports."
+---
+
 # API Reference: Integrations and payments
 
 The API reference is generated from the SDK's English docstrings via

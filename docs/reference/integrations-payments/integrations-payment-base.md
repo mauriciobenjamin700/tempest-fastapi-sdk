@@ -1,3 +1,7 @@
+---
+description: "O contrato canônico de pagamento em que todo provedor embutido é mapeado."
+---
+
 # `tempest_fastapi_sdk.integrations.payment.base`
 
 O contrato canônico de pagamento em que todo provedor embutido é mapeado.

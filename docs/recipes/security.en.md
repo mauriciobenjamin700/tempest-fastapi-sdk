@@ -1,3 +1,7 @@
+---
+description: "Use to harden the service; covers `AttemptThrottle` against brute force, JWT `typ`, opaque tokens, hardened static files, `CSRFMiddleware`, cookies, client IP and `HoneypotBanMiddleware`."
+---
+
 # Security
 
 Defensive primitives: rate-limit by failure (login/OTP), opaque single-use tokens, hardened static-file serving with security headers, HttpOnly/Secure/SameSite cookie helpers, and a client-IP resolver scoped to trusted proxy headers.

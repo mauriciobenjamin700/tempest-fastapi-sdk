@@ -1,3 +1,7 @@
+---
+description: "Recipes index: an SDK tour with one example per building block (auth, cache, queue, AI, admin, CLI) plus the full list of recipes and complete examples."
+---
+
 # Recipes
 
 Bite-sized "I want to wire X" walkthroughs. Each page starts with **what problem it solves**, **when to reach for it**, and a complete code example you can copy verbatim.

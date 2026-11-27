@@ -1,3 +1,7 @@
+---
+description: "O painel admin estilo Django: site, model admin, ações, políticas de acesso, auditoria e páginas."
+---
+
 # `tempest_fastapi_sdk.admin`
 
 O painel admin estilo Django: site, model admin, ações, políticas de acesso, auditoria e páginas.

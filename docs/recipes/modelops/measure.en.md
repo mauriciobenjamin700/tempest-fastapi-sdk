@@ -1,3 +1,7 @@
+---
+description: "Use to measure before optimizing with `tempest model bench`; covers timing any callable, sampling CPU, GPU, RAM and energy and ranking models by score and Pareto."
+---
+
 # Measure: time, CPU, GPU, RAM, energy and comparison
 
 Use to measure before optimizing, time any callable, sample resources and energy and rank models by score and Pareto.

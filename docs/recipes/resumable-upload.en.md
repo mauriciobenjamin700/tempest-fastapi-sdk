@@ -1,3 +1,7 @@
+---
+description: "Use to accept uploads that resume where they stopped (tus protocol) with `make_tus_router`; covers `on_complete`, ownership, `Idempotency-Key`, `S3TusStore`, expiry, limits and CORS."
+---
+
 # Resumable uploads (tus)
 
 A field technician takes ten photos with no signal; when the network comes back they go

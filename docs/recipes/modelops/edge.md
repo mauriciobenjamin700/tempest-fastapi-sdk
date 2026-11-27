@@ -1,3 +1,7 @@
+---
+description: "Use para servir o modelo na borda com GPU ou HTTP e trocá-lo sem redeploy; contém o pacote de borda com manifesto e o que vale otimizar, medido."
+---
+
 # Servir na borda e publicar o pacote
 
 Use para servir o modelo (com GPU ou por HTTP), trocá-lo sem redeploy, publicar o pacote de borda e saber o que vale otimizar.

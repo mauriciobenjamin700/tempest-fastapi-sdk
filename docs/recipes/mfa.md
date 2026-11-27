@@ -1,3 +1,7 @@
+---
+description: "Use para ligar 2FA por TOTP no auth do SDK; contém `MFAMixin`, recovery codes, os quatro endpoints, login em dois passos, rotas que exigem MFA, limite de tentativas e reset."
+---
+
 # MFA / 2FA com TOTP (Authenticator)
 
 Desde **v0.35.0** o fluxo de auth bundled suporta **autenticação de dois fatores** com apps Authenticator (Google Authenticator, 1Password, Authy, etc.) seguindo o padrão **TOTP (RFC 6238)**. Você ganha quatro endpoints prontos, códigos de recuperação single-use, e um login de dois passos — tudo controlado por um kill-switch global.

@@ -1,3 +1,7 @@
+---
+description: "Índice dos módulos de integração: contrato de pagamentos, Mercado Pago, OpenPix, Stripe, RevenueCat, upload no Google Drive, carteira Pix, gateway de WhatsApp e erros de app."
+---
+
 # Referência: Integrações e pagamentos
 
 O contrato canônico de pagamentos, os provedores (Mercado Pago, OpenPix, Stripe, RevenueCat), o backend de upload do Google Drive, a carteira com saque Pix, o gateway de WhatsApp e o relatório de erros de app.

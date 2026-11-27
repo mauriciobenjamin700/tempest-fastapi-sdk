@@ -1,3 +1,7 @@
+---
+description: "O router opcional do FastAPI que recebe o webhook do zap-api."
+---
+
 # `tempest_fastapi_sdk.integrations.messaging.zap.router`
 
 O router opcional do FastAPI que recebe o webhook do zap-api.

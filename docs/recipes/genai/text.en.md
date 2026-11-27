@@ -1,3 +1,7 @@
+---
+description: "Use to generate text with a local LLM (`TextGenerator`) or an OpenAI-compatible backend (DeepSeek, Groq, OpenRouter, vLLM), with per-call cost and `extra_body`."
+---
+
 # Generate text (local and hosted)
 
 Use to generate text with a local LLM (`TextGenerator`) or an OpenAI-compatible backend (DeepSeek, Groq, OpenRouter, vLLM), with per-call cost and `extra_body`.

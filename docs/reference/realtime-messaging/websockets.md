@@ -1,3 +1,7 @@
+---
+description: "WebSocket: router autenticado, hub de conexões e o envelope de mensagem."
+---
+
 # `tempest_fastapi_sdk.websockets`
 
 WebSocket: router autenticado, hub de conexões e o envelope de mensagem.

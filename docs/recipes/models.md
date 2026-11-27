@@ -1,3 +1,7 @@
+---
+description: "Use para escolher o modelo de IA por enum em vez de id em string; contém `TextModelEnum`, `EmbeddingModelEnum`, rerank, visão, imagem e áudio, com prefixos do e5."
+---
+
 # Escolhendo o modelo
 
 Todo objeto de IA do SDK recebe um **id de modelo em string**:

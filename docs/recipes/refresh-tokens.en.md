@@ -1,3 +1,7 @@
+---
+description: "Use to swap the stateless JWT refresh token for an opaque DB-backed one; covers setup with `refresh_token_model`, rotation, reuse detection, revoking logout and the service directly."
+---
+
 # DB-backed refresh tokens (rotation + revocation)
 
 Since **v0.66.0** the bundled auth flow can swap the *stateless* JWT refresh token for an **opaque token persisted in the database**, gaining three things a plain JWT never gives you: **real rotation**, **reuse detection** (stolen token), and **revocation** (logout that kills the session before its expiry).

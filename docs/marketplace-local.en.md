@@ -1,3 +1,7 @@
+---
+description: "Use to see a neighborhood marketplace with the newer modules: nearby sellers via geo, real-time chat, star ratings and live notifications."
+---
+
 # Integrated example — neighbourhood marketplace
 
 The [Pix checkout](integrated.md) wires the payment blocks together. Here

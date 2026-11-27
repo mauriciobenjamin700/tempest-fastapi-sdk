@@ -1,3 +1,7 @@
+---
+description: "Índice dos módulos: agentes, modelos generativos self-hosted, modelops (export, bench, quantização), visão computacional, reconhecimento facial e busca aproximada de texto."
+---
+
 # Referência: IA e visão computacional
 
 Agentes, modelos generativos self-hosted, modelops (export, bench, quantização), visão computacional, reconhecimento facial e busca aproximada de texto.

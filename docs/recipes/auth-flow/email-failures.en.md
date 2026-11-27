@@ -1,3 +1,7 @@
+---
+description: "Use to know what each auth route answers with `EMAIL_ENABLED=false` or SMTP down, and when to use `AUTH_SEND_EMAILS_IN_BACKGROUND`."
+---
+
 # Email disabled and SMTP down
 
 Use to know what each route answers with `EMAIL_ENABLED=false` or with SMTP failing, and when to send emails in the background.

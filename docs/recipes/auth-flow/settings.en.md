@@ -1,3 +1,7 @@
+---
+description: "Look up the auth flow's environment variables by typed group: JWT, password, email, TTL, URLs, pages, language, token delivery, OAuth and deactivated accounts."
+---
+
 # Settings: environment variables
 
 Look up the flow's environment variables in typed groups: JWT, password policy, email, TTL, URLs, pages, language, token delivery and more.

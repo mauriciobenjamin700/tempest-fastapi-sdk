@@ -1,3 +1,7 @@
+---
+description: "Unified push notifications — one API for browsers and phones."
+---
+
 # API Reference: `tempest_fastapi_sdk.push`
 
 Unified push notifications — one API for browsers and phones.

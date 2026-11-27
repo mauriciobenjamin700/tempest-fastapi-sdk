@@ -1,3 +1,7 @@
+---
+description: "Event sourcing — an event store protocol with SQL and KurrentDB backends."
+---
+
 # API Reference: `tempest_fastapi_sdk.eventsourcing`
 
 Event sourcing — an event store protocol with SQL and KurrentDB backends.

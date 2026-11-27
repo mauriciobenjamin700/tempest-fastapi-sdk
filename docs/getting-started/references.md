@@ -1,3 +1,7 @@
+---
+description: "Use quando travar numa dúvida de ferramenta; índice curado da documentação oficial de linguagem, web, banco, infraestrutura, qualidade e interface."
+---
+
 # Documentação oficial de referência
 
 Quando você trava numa dúvida, a resposta quase sempre está na documentação oficial da ferramenta — não num blog de 2019. Esta página é o índice curado dessas fontes, agrupado pelo que o SDK usa de fato.

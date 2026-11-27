@@ -1,3 +1,7 @@
+---
+description: "Use para montar o chat completo (histórico, memória, ferramentas) com `AIChatPipeline`, o endpoint pronto `make_ai_chat_router` e streaming."
+---
+
 # Pipeline de chat com IA
 
 Use para montar o chat completo (histórico, memória, ferramentas) com `AIChatPipeline`, o endpoint pronto `make_ai_chat_router` e streaming.

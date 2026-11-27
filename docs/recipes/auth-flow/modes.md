@@ -1,3 +1,7 @@
+---
+description: "Use para escolher entre os cinco modos do fluxo (produção, SMTP local, sem SMTP, CI, backend-only) e subir Mailhog ou smtp4dev com docker-compose."
+---
+
 # Cinco modos de operação e SMTP local
 
 Use para escolher o modo (produção, dev com SMTP local, dev sem SMTP, CI, backend-only) e subir Mailhog ou smtp4dev.

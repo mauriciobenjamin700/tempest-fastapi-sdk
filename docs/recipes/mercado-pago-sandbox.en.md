@@ -1,3 +1,7 @@
+---
+description: "Use to get Mercado Pago test credentials that actually work; covers the step-by-step seller account, application, Access Token, test cards, Pix and common errors."
+---
+
 # Mercado Pago: test accounts and credentials
 
 Before charging for real, you want to see a Pix being created, a card being

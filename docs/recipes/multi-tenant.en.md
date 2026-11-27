@@ -1,3 +1,7 @@
+---
+description: "Use to isolate tenants in a shared schema without forgetting the filter; covers `TenantScopedRepository`, the tenant column and blocked cross-tenant reads and writes."
+---
+
 # Multi-tenant (TenantScopedRepository)
 
 In a **shared-schema** multi-tenant database, every tenant's rows live in

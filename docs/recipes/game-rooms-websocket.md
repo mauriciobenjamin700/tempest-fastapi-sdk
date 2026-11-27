@@ -1,3 +1,7 @@
+---
+description: "Use para montar o servidor de salas de jogo multiplayer por WebSocket com `tempest_fastapi_sdk.rooms`; cobre protocolo, lockstep, anfitrião, reconexão e latência."
+---
+
 # Salas de jogo online (WebSocket)
 
 Um jogo multiplayer online precisa de um ponto de encontro na internet: os

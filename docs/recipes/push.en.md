@@ -1,3 +1,7 @@
+---
+description: "Use to notify web and mobile in a single flow; covers the device table, Web Push and FCM transports, pruning rejected tokens, fan-out, testing and FCM disabled."
+---
+
 # Push (web + mobile in one flow)
 
 A product with a site **and** an app ends up with two notification APIs:

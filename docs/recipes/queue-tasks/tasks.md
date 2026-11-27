@@ -1,3 +1,7 @@
+---
+description: "Use para tirar trabalho lento do request com `TaskQueue`; contém enfileirar, `enqueue_by_name`, recursos do worker em `on_startup`/`on_shutdown` e tarefas em classe."
+---
+
 # Tarefas em background com `TaskQueue`
 
 Use para tirar trabalho lento do request: enfileirar, enfileirar pelo nome, recursos do worker e tarefas em classe.

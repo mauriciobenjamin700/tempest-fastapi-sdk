@@ -1,3 +1,7 @@
+---
+description: "Use para migrações com `AlembicHelper`: bootstrap, gerar e aplicar revisões no startup, travar drift de schema no CI e migrar constraints da convenção antiga."
+---
+
 # 8. Migrações Alembic
 
 Use para fazer bootstrap do Alembic, gerar e aplicar revisões, travar drift no CI e migrar constraints da convenção antiga.

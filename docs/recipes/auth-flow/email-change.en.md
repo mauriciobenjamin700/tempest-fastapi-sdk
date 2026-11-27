@@ -1,3 +1,7 @@
+---
+description: "Use to change the email while logged in, re-verify the current one, recover an account with a lost inbox and renew the session with the refresh token."
+---
+
 # Change and recover an email
 
 Use to change the email while logged in, re-verify the current one, recover the account when the inbox is lost and renew the session with the refresh token.

@@ -1,3 +1,7 @@
+---
+description: "Use when the assistant must remember facts across conversations (`ChatMemory`), in memory or in Postgres with pgvector."
+---
+
 # Long-term memory
 
 Use when the assistant must remember facts across conversations (`ChatMemory`), in memory or in Postgres with pgvector.

@@ -1,3 +1,7 @@
+---
+description: "Use to test Mercado Pago webhooks at four levels, from offline simulation to real delivery; covers `make_mercado_pago_router`, `MercadoPagoSimulator` and manual payouts."
+---
+
 # Mercado Pago: testing webhooks
 
 Webhooks are the hardest part of a payment integration to test: Mercado Pago

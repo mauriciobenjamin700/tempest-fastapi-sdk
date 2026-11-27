@@ -1,3 +1,7 @@
+---
+description: "Use to find where a `from tempest_fastapi_sdk import X` name is documented; lists the root re-exports grouped by module, each linking its anchor."
+---
+
 # API Reference: Top-level surface
 
 The names `tempest_fastapi_sdk` re-exports at its root, grouped by the module

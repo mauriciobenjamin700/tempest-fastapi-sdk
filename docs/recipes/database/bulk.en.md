@@ -1,3 +1,7 @@
+---
+description: "Use to write many rows at once through the repository, keeping or bypassing the unit of work, including idempotent inserts with ON CONFLICT DO NOTHING."
+---
+
 # 5. Bulk operations
 
 Use to write many rows at once, keeping or bypassing the unit of work, including idempotent inserts (ON CONFLICT DO NOTHING).

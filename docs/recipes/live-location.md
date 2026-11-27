@@ -1,3 +1,7 @@
+---
+description: "Use para posição ao vivo de motorista ou entregador; contém exemplo de carona, `LivePositionSchema`, `LivePositionStore`, `audience`, ETA e `make_live_position_router`."
+---
+
 # Localização ao vivo
 
 Motorista dirigindo, passageiros acompanhando no mapa. Entregador a caminho,

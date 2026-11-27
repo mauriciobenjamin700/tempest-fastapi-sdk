@@ -1,3 +1,7 @@
+---
+description: "Use to run LLMs and embeddings through Ollama, without torch: generation, RAG, hybrid search, reranking and the same router swapping torch for Ollama."
+---
+
 # Ollama backend
 
 Use to run LLMs and embeddings through Ollama, without torch: generation, RAG, hybrid search, reranking and the same router swapping torch for Ollama.

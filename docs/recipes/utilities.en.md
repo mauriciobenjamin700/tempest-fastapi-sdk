@@ -1,3 +1,7 @@
+---
+description: "Use to find small base-SDK helpers; covers `utcnow`/`to_utc`, `get_client_ip`, opaque tokens, `generate_password`, `sign_path`, `form_encode` and color contrast."
+---
+
 # Utilities
 
 Small, stateless helpers from the base SDK: no extra, no configuration. Each

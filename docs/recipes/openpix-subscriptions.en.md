@@ -1,3 +1,7 @@
+---
+description: "Use for recurring billing on OpenPix; covers creating a subscription, `RECURRENT` vs `PIX_RECURRING`, receiving each cycle, lifecycle, changing the amount and your local state."
+---
+
 # OpenPix (subscriptions and plans)
 
 This recipe covers **recurring** billing: monthly plans, yearly plans, Pix

@@ -1,3 +1,7 @@
+---
+description: "Text matching without a model: normalization, edit distance, fuzzy lookup."
+---
+
 # API Reference: `tempest_fastapi_sdk.text`
 
 Text matching without a model: normalization, edit distance, fuzzy lookup.

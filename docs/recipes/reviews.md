@@ -1,3 +1,7 @@
+---
+description: "Use para adicionar comentários encadeados e notas de 0 a 5 estrelas a qualquer entidade sem tabela por tipo; contém `BaseCommentModel`, `BaseRatingModel`, serviço e router."
+---
+
 # Comentários + avaliações
 
 Comentários e avaliações de **0 a 5 estrelas** sobre qualquer coisa —

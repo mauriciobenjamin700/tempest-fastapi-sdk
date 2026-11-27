@@ -1,3 +1,7 @@
+---
+description: "Look up every auth-flow endpoint with payload and behaviour; covers closed systems, admin-created accounts, extra signup fields and attempt limits."
+---
+
 # Endpoints
 
 Look up every endpoint with payload and behaviour: closed system, admin-created accounts, extra signup fields and attempt limits.

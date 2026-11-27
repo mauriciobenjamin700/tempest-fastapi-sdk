@@ -1,3 +1,7 @@
+---
+description: "Use para cobrar com Mercado Pago (Pix, cartão, Checkout Pro e Transparente); contém `MercadoPagoClient`, valores em reais, verificação do webhook e releitura da order."
+---
+
 # Mercado Pago: cobrando no gateway mais usado do Brasil
 
 Pix, cartão, boleto e presencial, com a superfície inteira já gerada da

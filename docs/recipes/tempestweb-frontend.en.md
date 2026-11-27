@@ -1,3 +1,7 @@
+---
+description: "Use to connect a Python frontend (tempestweb) to an SDK backend over typed HTTP; covers the backend, the frontend, end-to-end idempotency, typed retry and CORS per origin."
+---
+
 # tempestweb frontend + tempest-fastapi-sdk backend
 
 **What it solves:** you want a rich Python frontend (tempestweb) talking to a

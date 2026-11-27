@@ -1,3 +1,7 @@
+---
+description: "Use para não perder evento que falha no consumidor; contém dead-letter, retry com atraso pelo broker, métricas, prefetch, idempotência e tracing pela fila."
+---
+
 # Confiabilidade do caminho de eventos
 
 Use para não perder mensagem que falha: dead-letter, retry com atraso, métricas, prefetch, idempotência e tracing pela fila.

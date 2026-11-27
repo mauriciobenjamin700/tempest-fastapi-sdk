@@ -1,3 +1,7 @@
+---
+description: "Use in production: moderate content, account usage per user, expose metrics and tracing, count tokens and cache generations."
+---
+
 # Moderation, usage, metrics and cache
 
 Use in production: moderate content, account usage per user, expose metrics and tracing, count tokens and cache generations.

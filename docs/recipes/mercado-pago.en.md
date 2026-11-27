@@ -1,3 +1,7 @@
+---
+description: "Use to charge through Mercado Pago (Pix, card, Checkout Pro and Transparent); covers `MercadoPagoClient`, amounts in reais, webhook verification and re-reading the order."
+---
+
 # Mercado Pago: charging on Brazil's most-used gateway
 
 Pix, cards, boleto and in-person payments, with the whole surface already

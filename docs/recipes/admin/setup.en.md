@@ -1,3 +1,7 @@
+---
+description: "Use to stand up the admin panel: a `BaseUserModel` user model, registering admin classes or `automap`, and mounting the router."
+---
+
 # Mount the admin site
 
 Use to stand the panel up: user model, admin class registration (or `automap`) and the router with everything it mounts.

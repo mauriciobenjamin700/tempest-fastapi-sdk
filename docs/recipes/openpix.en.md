@@ -1,3 +1,7 @@
+---
+description: "Use to charge one-off Pix via OpenPix and release the paid order; covers checkout with a BR Code, verified webhooks, reconciliation, refunds, cents and offline testing."
+---
+
 # OpenPix (Pix via Woovi)
 
 This recipe builds a service that **opens a Pix charge, finds out when it was

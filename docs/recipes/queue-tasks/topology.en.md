@@ -1,3 +1,7 @@
+---
+description: "Use when the RabbitMQ queue needs declared topology via `QueueSpec`; covers the required exchange, per-consumer fan-out, replaying the dead-letter queue and rejected fields."
+---
+
 # Queue topology with `QueueSpec`
 
 Use when the queue must survive a restart, fan out, have a reprocessable dead-letter queue and a declared exchange.

@@ -1,3 +1,7 @@
+---
+description: "Test helpers shared across SDK consumers."
+---
+
 # API Reference: `tempest_fastapi_sdk.testing`
 
 Test helpers shared across SDK consumers.

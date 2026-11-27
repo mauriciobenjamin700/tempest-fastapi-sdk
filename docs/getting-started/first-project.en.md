@@ -1,3 +1,7 @@
+---
+description: "Use to create your first project with the SDK; covers the from-scratch path file by file, the real-project shortcut and the five everyday commands."
+---
+
 # Your first project
 
 You have `uv` ([page 1](uv.md)) and you know how to pick a Python version ([page 2](python-versions.md)). Now let's create a project from scratch, install the SDK and bring up an API that actually answers — in fewer than ten commands.

@@ -1,3 +1,7 @@
+---
+description: "Use para receber relatos de erro do app cliente (mobile/web); contém a tabela, o endpoint público, truncamento, `user_id` do token, listagem filtrável e rate limit."
+---
+
 # Erros do app: quando o cliente quebra na mão do usuário
 
 Seu app mobile estourou um `TypeError` na tela de pagamento. O usuário fecha

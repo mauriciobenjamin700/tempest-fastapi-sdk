@@ -1,3 +1,7 @@
+---
+description: "Índice de tempo real: use para escolher como empurrar dados ao cliente sem polling; aponta para as receitas de SSE (página aberta) e de Web Push (página fechada)."
+---
+
 # Tempo real
 
 Empurre dados para os clientes sem que o cliente fique fazendo polling. SSE para broadcasts servidor→navegador com a página aberta; para notificações que chegam mesmo com a página fechada, veja a receita dedicada de [Web Push](webpush.md).

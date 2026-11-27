@@ -1,3 +1,7 @@
+---
+description: "A camada de serviço que todo consumidor do zap-api escreve: reivindicar, acompanhar e enviar."
+---
+
 # `tempest_fastapi_sdk.integrations.messaging.zap.inbox`
 
 A camada de serviço que todo consumidor do zap-api escreve: reivindicar, acompanhar e enviar.

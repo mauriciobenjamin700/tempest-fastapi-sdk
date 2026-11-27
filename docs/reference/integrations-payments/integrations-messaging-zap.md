@@ -1,3 +1,7 @@
+---
+description: "zap-api, o gateway de WhatsApp da casa: cliente, schemas e receiver de webhook."
+---
+
 # `tempest_fastapi_sdk.integrations.messaging.zap`
 
 zap-api, o gateway de WhatsApp da casa: cliente, schemas e receiver de webhook.

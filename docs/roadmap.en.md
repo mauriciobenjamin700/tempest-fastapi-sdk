@@ -1,3 +1,7 @@
+---
+description: "Use to see what the SDK already ships and what is in the backlog; covers tiers S, A and B with status and version, admin panel evolution, next steps and per-version deliveries."
+---
+
 # Roadmap
 
 The backlog that guided the SDK and what of it has landed — today every Tier S item below is marked ✅ with the version that shipped it. Sorted by impact, not implementation order — a release is pulled by business pressure, not list position.

@@ -1,3 +1,7 @@
+---
+description: "Use to version binaries swapped at runtime (ONNX models, bundles) with one current version per name; covers `ArtifactRegistry`, digest, manifest and admin action."
+---
+
 # Versioned artifact registry
 
 Some services serve **binaries that swap at runtime**: ONNX models, rule bundles, compiled config files. The shape is always the same — one logical artifact (`name`) has **many versions**, and exactly **one is "current"** at a time. An operator uploads a new version to object storage and activates it from the admin panel; the endpoints resolve the current version per request, with no redeploy.

@@ -1,3 +1,7 @@
+---
+description: "Use once you outgrow one agent: folder layout with `runtime.py`, tools, schemas, views, `policy.py` and prompts, import direction, endpoint and auditing."
+---
+
 # AI agents (architecture)
 
 One tool and one agent fit comfortably in a single file. The **second** agent

@@ -1,3 +1,7 @@
+---
+description: "Providers translated into the canonical payment contract."
+---
+
 # API Reference: `tempest_fastapi_sdk.integrations.payment.adapters`
 
 Providers translated into the canonical payment contract.

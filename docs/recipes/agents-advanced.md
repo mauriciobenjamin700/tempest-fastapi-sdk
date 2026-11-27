@@ -1,3 +1,7 @@
+---
+description: "Use quando o agente básico não basta: saída estruturada, memória em três camadas, skills sob demanda, delegação, loops com critério e crítica, e moderação."
+---
+
 # Agentes de IA (avançado)
 
 Esta página continua de onde [Agentes de IA](agents.md) parou. Lá o agente

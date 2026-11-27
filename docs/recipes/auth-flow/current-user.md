@@ -1,3 +1,7 @@
+---
+description: "Use para injetar o usuário autenticado nas suas rotas via `current_user_dependency()`; contém ordem header/cookie/query, `soft=True` e guards no service."
+---
+
 # Pegar o `current_user` da requisição
 
 Use para injetar o usuário autenticado nas suas rotas, com auth opcional (`soft=True`) e guards dentro do service.

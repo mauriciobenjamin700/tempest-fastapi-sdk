@@ -1,3 +1,7 @@
+---
+description: "Índice da CLI `tempest` (extras `[cli]` e `[cli-ops]`): criar serviço e rodar gates de qualidade; mapeia cada tarefa de linha de comando à sua subpágina."
+---
+
 # CLI
 
 

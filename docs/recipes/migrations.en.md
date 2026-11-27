@@ -1,3 +1,7 @@
+---
+description: "Use to create and evolve the schema with Alembic; covers `AlembicHelper.sync_schema`, readiness probes, adopting or repairing a database, SQLite FKs and why to avoid `create_tables()`."
+---
+
 # Migrations
 
 Every database recipe assumes the schema already exists. This one is about the

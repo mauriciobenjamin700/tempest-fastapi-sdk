@@ -1,3 +1,7 @@
+---
+description: "Server-side session module — store + service + middleware + router."
+---
+
 # API Reference: `tempest_fastapi_sdk.sessions`
 
 Server-side session module — store + service + middleware + router.

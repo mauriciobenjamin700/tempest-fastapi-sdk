@@ -1,3 +1,7 @@
+---
+description: "Use to generate sound effects and music (MusicGen) with `AudioGenerator` and serve the result over HTTP at `/audio`."
+---
+
 # Sound effects and music
 
 Use to generate sound effects and music (MusicGen) and serve the result over HTTP at `/audio`.

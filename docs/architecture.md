@@ -1,3 +1,7 @@
+---
+description: "Use para entender o fatiamento router, controller, service, repository; contém layout obrigatório, envelope de exceções, padrões de camada e o `tempest lint-layers`."
+---
+
 # Arquitetura
 
 O SDK impõe um fatiamento estrito **router → controller → service → repository**. Todo projeto Tempest segue o mesmo formato, então um desenvolvedor jogado em um repositório novo encontra o arquivo que precisa logo de primeira.

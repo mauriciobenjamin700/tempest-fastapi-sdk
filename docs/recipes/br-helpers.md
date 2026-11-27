@@ -1,3 +1,7 @@
+---
+description: "Use para validar e normalizar dados brasileiros: CPF, CNPJ, telefone, CEP, UF e município, dinheiro em real, mais `utcnow`, `to_utc` e `modify_dict`."
+---
+
 # Helpers brasileiros
 
 Validadores de documentos (CPF, CNPJ, CEP) e normalizador/validador de telefone para formatos BR. Pura stdlib — sem deps extras.

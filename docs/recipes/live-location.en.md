@@ -1,3 +1,7 @@
+---
+description: "Use for live driver or courier positions; covers a ride-sharing example, `LivePositionSchema`, `LivePositionStore`, `audience`, ETA and `make_live_position_router`."
+---
+
 # Live location
 
 A driver on the road, passengers following on the map. A courier on the way,

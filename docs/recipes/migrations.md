@@ -1,3 +1,7 @@
+---
+description: "Use para criar e evoluir o schema com Alembic; contém `AlembicHelper.sync_schema`, readiness probe, adotar ou reparar banco, SQLite com FK e por que evitar `create_tables()`."
+---
+
 # Migrations
 
 Toda receita de banco assume que o schema já existe. Esta é sobre o passo

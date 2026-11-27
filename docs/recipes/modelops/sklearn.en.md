@@ -1,3 +1,7 @@
+---
+description: "Use to export scikit-learn, including from a `.pkl`, to ONNX or the runtime-free compact format; covers GPU, pinning the release hash and what the format refuses."
+---
+
 # Export scikit-learn and `.pkl`
 
 Use to export a scikit-learn model (including one from a `.pkl`) to ONNX or to the runtime-free compact format.

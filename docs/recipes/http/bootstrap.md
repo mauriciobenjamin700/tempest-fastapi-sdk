@@ -1,3 +1,7 @@
+---
+description: "Use para criar a app com `create_app`, ter liveness/readiness, pôr todo 4xx e o 422 no envelope de erro, notificar falhas e localizar mensagens."
+---
+
 # Bootstrap da aplicação e envelope de erro
 
 Use para criar a app com `create_app`, ter liveness/readiness, pôr todo 4xx e o 422 no envelope de erro, notificar falhas e localizar mensagens.

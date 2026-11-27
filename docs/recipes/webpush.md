@@ -1,3 +1,7 @@
+---
+description: "Use para mandar notificação Web Push (VAPID) ao navegador com `WebPushDispatcher`; contém config VAPID, camadas model a router, payload do service worker e broadcast."
+---
+
 # Web Push
 
 Notificações Web Push (assinadas com VAPID) para navegadores via

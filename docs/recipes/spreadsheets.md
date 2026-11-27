@@ -1,3 +1,7 @@
+---
+description: "Use para gerar ou ler planilhas `.xlsx`; contém colunas declaradas, formatos brasileiros, fórmulas vivas, tema, download, leitura do Google Sheets e de `.xlsx`, e limites contra zip bomb."
+---
+
 # Planilhas (.xlsx)
 
 PDF é o que você envia quando os números estão fechados. Planilha é o que

@@ -1,3 +1,7 @@
+---
+description: "Index of self-hosted generative AI on your own hardware: points to the subpage for each task (hardware, text, audio, RAG, chat, memory, operations)."
+---
+
 # Self-hosted generative AI
 
 Run HuggingFace models on **your own hardware** — no external API, no data

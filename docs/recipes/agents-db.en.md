@@ -1,3 +1,7 @@
+---
+description: "Use when an agent tool queries the app database: a session per call, commit in the context manager, one manager per process and the `context` parameter."
+---
+
 # AI agents (database)
 
 The first useful tool anyone writes is almost never a weather lookup — it is a

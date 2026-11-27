@@ -1,3 +1,7 @@
+---
+description: "Use for object-level authorization (may this user edit this order?); covers rule registration, route protection, async handlers, bypass, fallback and `user.has_perm`."
+---
+
 # Object-level permissions
 
 **Object**-based authorization — "may this user edit **this** order?" —

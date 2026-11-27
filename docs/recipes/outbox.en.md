@@ -1,3 +1,7 @@
+---
+description: "Use to publish events atomically with the database write and avoid dual-write; covers the outbox table, same-transaction writes, the relay, retries and a one-shot drain."
+---
+
 # Transactional outbox (reliable events)
 
 When a handler **writes a row** and **publishes an event**, doing the two

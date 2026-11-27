@@ -1,3 +1,7 @@
+---
+description: "Use before designing an agent: the loop internals, what the model sees, context cost, budgets, when to use a tool, skill or delegation, and failure modes."
+---
+
 # Agents: how they work inside
 
 The other pages show **what to write**. This one explains **what happens** when

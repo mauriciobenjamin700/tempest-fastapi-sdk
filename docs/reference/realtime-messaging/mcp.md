@@ -1,3 +1,7 @@
+---
+description: "Model Context Protocol nas duas direções, sobre o FastMCP."
+---
+
 # `tempest_fastapi_sdk.mcp`
 
 Model Context Protocol nas duas direções, sobre o FastMCP.

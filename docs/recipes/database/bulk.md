@@ -1,3 +1,7 @@
+---
+description: "Use para gravar muitas linhas de uma vez no repository, mantendo ou contornando a unit-of-work, inclusive inserção idempotente com ON CONFLICT DO NOTHING."
+---
+
 # 5. Operações em lote
 
 Use para gravar muitas linhas de uma vez, mantendo ou contornando a unit-of-work, inclusive inserção idempotente (ON CONFLICT DO NOTHING).

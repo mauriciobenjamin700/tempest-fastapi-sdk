@@ -1,3 +1,7 @@
+---
+description: "Use when you want server-side session auth instead of JWT; covers the comparison, `SessionAuth` setup, endpoints, settings, Memory/Redis stores, middleware and login without a user table."
+---
+
 # Server-side sessions
 
 Since v0.34.0 the SDK ships the full **server-side session** auth lifecycle — an alternative to the JWT flow from `UserAuthService`. The cookie carries only an opaque id; real state (user_id, TTL, client metadata, app-level data) lives in a pluggable **`SessionStore`** (Memory for dev/tests, Redis for production).

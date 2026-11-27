@@ -1,3 +1,7 @@
+---
+description: "Use to charge cards, subscriptions or Checkout through Stripe with no extra; covers the minimal path, form-encoded bodies, currency, webhook verification, idempotency, pagination, errors and tests."
+---
+
 # Stripe (cards, subscriptions, Checkout)
 
 Every service of ours that charges a card used to rewrite the same Stripe

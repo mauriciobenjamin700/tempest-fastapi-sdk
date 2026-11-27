@@ -1,3 +1,7 @@
+---
+description: "Use para registrar comandos próprios na CLI `tempest`, como o `manage.py` do Django; contém a convenção `src/commands.py`, local customizado, colisões e grupos aninhados."
+---
+
 # Management commands (`tempest <cmd>` do projeto)
 
 Plugue comandos próprios na CLI `tempest` — do jeito que o Django deixa

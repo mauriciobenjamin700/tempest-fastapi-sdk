@@ -1,3 +1,7 @@
+---
+description: "Use to assemble the full chat (history, memory, tools) with `AIChatPipeline`, the ready `make_ai_chat_router` endpoint and streaming."
+---
+
 # AI chat pipeline
 
 Use to assemble the full chat (history, memory, tools) with `AIChatPipeline`, the ready `make_ai_chat_router` endpoint and streaming.

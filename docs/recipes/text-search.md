@@ -1,3 +1,7 @@
+---
+description: "Use para buscar texto em models; contém `search()` portátil (LIKE) em PostgreSQL e SQLite, campos escolhidos pela requisição, paginação e `full_text_search()` com peso por campo."
+---
+
 # Busca textual (LIKE + full-text)
 
 Duas camadas, porque respondem a perguntas diferentes. A portátil se

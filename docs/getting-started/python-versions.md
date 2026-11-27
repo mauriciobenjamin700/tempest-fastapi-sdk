@@ -1,3 +1,7 @@
+---
+description: "Use para escolher e fixar a versão do Python por projeto com o `uv`; contém a política de versões, `.python-version`, teste nas três versões e problemas comuns."
+---
+
 # Escolher a versão do Python
 
 Com o `uv` instalado ([página anterior](uv.md)), o Python deixa de ser algo que você "tem na máquina" e passa a ser **uma escolha por projeto**. Esta página mostra como fazer essa escolha e como não ser mordido por ela depois.

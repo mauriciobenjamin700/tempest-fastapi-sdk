@@ -1,3 +1,7 @@
+---
+description: "A hierarquia `AppException`, as exceções por domínio e os handlers que as viram resposta HTTP."
+---
+
 # `tempest_fastapi_sdk.exceptions`
 
 A hierarquia `AppException`, as exceções por domínio e os handlers que as viram resposta HTTP.

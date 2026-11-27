@@ -1,3 +1,7 @@
+---
+description: "Use para isolar tenants num schema compartilhado sem esquecer o filtro; contém `TenantScopedRepository`, coluna de tenant e bloqueio de acesso cruzado em leitura e escrita."
+---
+
 # Multi-tenant (TenantScopedRepository)
 
 Num banco multi-tenant de **schema compartilhado**, as linhas de todos os

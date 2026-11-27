@@ -1,3 +1,7 @@
+---
+description: "Use to quantize an ONNX model dynamically or statically with calibration; covers optimizing and quantizing a HuggingFace export without depending on `optimum`."
+---
+
 # Quantize (dynamic, static and HuggingFace)
 
 Use to quantize dynamically or statically and to optimize and quantize a HuggingFace export without depending on `optimum`.

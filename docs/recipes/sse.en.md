@@ -1,3 +1,7 @@
+---
+description: "Use to push server-to-browser events over SSE; covers the endpoint, heartbeat, backpressure, broadcast with `SSEBroker`, multi-worker Redis/RabbitMQ bridges and stream authentication."
+---
+
 # Server-Sent Events (SSE)
 
 SSE pushes data from the server to the browser over **one long-lived HTTP

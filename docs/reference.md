@@ -1,3 +1,7 @@
+---
+description: "Use para achar a assinatura, os parâmetros e as exceções de um símbolo; índice da referência gerada das docstrings, por tema e por módulo."
+---
+
 # Referência da API
 
 Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https://mkdocstrings.github.io/). Todo símbolo exportado no `__all__` de `tempest_fastapi_sdk` e dos seus submódulos públicos está documentado nas páginas abaixo — com assinatura completa, parâmetros, tipo de retorno e exceções levantadas. O código-fonte de cada símbolo fica no repositório e no pacote instalado; a página não o repete.

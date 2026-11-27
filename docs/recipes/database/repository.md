@@ -1,3 +1,7 @@
+---
+description: "Use para o CRUD async com `BaseRepository`: modo direto ou subclasse, erro de constraint, eager-loading, signals e expressões `F`/`Q`."
+---
+
 # 3. O repository
 
 Use para o CRUD async com `BaseRepository`: modo direto ou subclasse, erro de constraint, eager-loading, signals e expressões `F`/`Q`.

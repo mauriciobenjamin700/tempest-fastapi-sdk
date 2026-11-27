@@ -1,3 +1,7 @@
+---
+description: "Database primitives exposed at module level."
+---
+
 # API Reference: `tempest_fastapi_sdk.db`
 
 Database primitives exposed at module level.

@@ -1,3 +1,7 @@
+---
+description: "Use para paginar no repository por offset (página 3 de 12) ou por cursor (tabela grande) e limitar colunas de ordenação e tamanho de página."
+---
+
 # 7. Paginação
 
 Use para paginar por offset ("página 3 de 12") ou por cursor (tabela grande) e limitar colunas de ordenação e tamanho de página.

@@ -1,3 +1,7 @@
+---
+description: "Use to enforce authorization invariants before a function runs with `@requires`; covers writing guards, type narrowing, `code`, metadata, `include_args` and `tempest permissions`."
+---
+
 # Permission guards (`@requires`)
 
 You already hold the user — it came from a dependency, or from a service

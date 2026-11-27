@@ -1,3 +1,7 @@
+---
+description: "Use para validar configuração antes de servir tráfego com `tempest check-config`; contém checks embutidos, check próprio, falha no startup e guard de produção `EnvironmentSettings`."
+---
+
 # System checks (`tempest check-config`)
 
 Valide a configuração **antes** de servir tráfego — segredo de assinatura

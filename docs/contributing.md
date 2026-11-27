@@ -1,3 +1,7 @@
+---
+description: "Use antes de contribuir: fluxo issue primeiro, ambiente de desenvolvimento, gates de qualidade, testes, docs, mensagens de commit e release."
+---
+
 # Contribuindo
 
 !!! tip "A contribuição mais útil é uma issue — não um PR"

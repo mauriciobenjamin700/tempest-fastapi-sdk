@@ -1,3 +1,7 @@
+---
+description: "Use para quantizar um modelo ONNX de forma dinâmica ou estática com calibração; contém otimizar e quantizar um export do HuggingFace sem depender do `optimum`."
+---
+
 # Quantizar (dinâmica, estática e HuggingFace)
 
 Use para quantizar dinâmica ou estaticamente e otimizar e quantizar um export do HuggingFace sem depender do `optimum`.

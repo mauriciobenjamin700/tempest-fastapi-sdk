@@ -1,3 +1,7 @@
+---
+description: "Use to emit the pagination `Link` header, expose `/tool-spec`, start uvicorn with `run_server` and compose settings from mixins."
+---
+
 # Pagination links, tool-spec, server and settings
 
 Use to emit the pagination `Link` header, expose `/tool-spec`, start uvicorn with `run_server` and compose settings from mixins.

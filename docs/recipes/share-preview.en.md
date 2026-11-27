@@ -1,3 +1,7 @@
+---
+description: "Use so links shared on WhatsApp or social networks show a preview; covers the per-item Open Graph page, unavailable items, the PNG card, cache and versioning, public link and Docker fonts."
+---
+
 # Sharing with a preview (Open Graph)
 
 When someone pastes a link into WhatsApp, Telegram, Instagram or X, the

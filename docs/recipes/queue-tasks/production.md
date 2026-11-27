@@ -1,3 +1,7 @@
+---
+description: "Use para rodar worker e scheduler do TaskIQ em produção; contém healthcheck por arquivo, checker, `docker-compose.yml` e scheduler no lifespan com lease de uma réplica."
+---
+
 # Workers, healthcheck e scheduler em produção
 
 Use para rodar worker e scheduler em produção, checar se estão vivos e agendar no lifespan com uma réplica só.

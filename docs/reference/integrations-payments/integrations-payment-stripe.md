@@ -1,3 +1,7 @@
+---
+description: "Stripe, da chave de API ao webhook verificado."
+---
+
 # `tempest_fastapi_sdk.integrations.payment.stripe`
 
 Stripe, da chave de API ao webhook verificado.

@@ -1,3 +1,7 @@
+---
+description: "Use para listar rotas, empacotar uma rota para a IA (`tempest bundle-route`), documentar erros no OpenAPI e auditar guards de permissão."
+---
+
 # Rotas, erros do OpenAPI e permissões
 
 Use para listar rotas, empacotar uma rota para a IA, documentar erros no OpenAPI e auditar guards de permissão.

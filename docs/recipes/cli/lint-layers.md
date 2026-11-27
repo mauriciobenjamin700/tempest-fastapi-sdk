@@ -1,3 +1,7 @@
+---
+description: "Consulte cada regra de arquitetura cobrada por `tempest lint-layers` (router, service, imports, tamanho de arquivo, suíte), com código, aviso ou erro e correção."
+---
+
 # Regras de camada: `tempest lint-layers`
 
 Consulte cada regra de arquitetura que o `tempest lint-layers` cobra, com o código e como corrigir.

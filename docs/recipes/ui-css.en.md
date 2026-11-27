@@ -1,3 +1,7 @@
+---
+description: "Use to write CSS in Python checked by the type checker; covers rules as objects, design tokens from `tempest_core`, serving the sheet, the bundled sheet and failing on wrong class names."
+---
+
 # Typed CSS (stylesheet and tokens)
 
 CSS written in Python, checked by the type checker, served by the app

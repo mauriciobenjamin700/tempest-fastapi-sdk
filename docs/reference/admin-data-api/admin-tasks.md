@@ -1,3 +1,7 @@
+---
+description: "A fonte de dados do painel de tarefas do admin: agenda declarada e execuções persistidas."
+---
+
 # `tempest_fastapi_sdk.admin.tasks`
 
 A fonte de dados do painel de tarefas do admin: agenda declarada e execuções persistidas.

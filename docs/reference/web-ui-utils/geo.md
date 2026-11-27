@@ -1,3 +1,7 @@
+---
+description: "Geolocalização sem API paga: distância, rotas, geometria e geocoding."
+---
+
 # `tempest_fastapi_sdk.geo`
 
 Geolocalização sem API paga: distância, rotas, geometria e geocoding.

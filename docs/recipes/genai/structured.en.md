@@ -1,3 +1,7 @@
+---
+description: "Use when the model must return a filled-in Pydantic object, and to pin generation parameters with `GenerationConfig`."
+---
+
 # Typed config and structured output
 
 Use when the model must return a filled-in Pydantic object, and to pin generation parameters with `GenerationConfig`.

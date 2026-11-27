@@ -1,3 +1,7 @@
+---
+description: "Server-Sent Events sobre o streaming do Starlette."
+---
+
 # `tempest_fastapi_sdk.sse`
 
 Server-Sent Events sobre o streaming do Starlette.

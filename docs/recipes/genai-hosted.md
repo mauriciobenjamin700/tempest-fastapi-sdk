@@ -1,3 +1,7 @@
+---
+description: "Use para gerar com Anthropic, OpenAI, DeepSeek ou Google pela API: chaves, tools, saída estruturada, PDF, embeddings, STT remoto e falhas do provedor."
+---
+
 # IA generativa hospedada (Anthropic, OpenAI, DeepSeek, Google)
 
 A base de IA do SDK roda modelo local — `TextGenerator` (transformers) ou

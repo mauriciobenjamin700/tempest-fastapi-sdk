@@ -1,3 +1,7 @@
+---
+description: "Use to inject the authenticated user into your routes via `current_user_dependency()`; covers header/cookie/query order, `soft=True` and guards in the service."
+---
+
 # Get the `current_user` from the request
 
 Use to inject the authenticated user into your routes, with optional auth (`soft=True`) and guards inside the service.

@@ -1,3 +1,7 @@
+---
+description: "Web Push (VAPID): envio e schemas de inscrição."
+---
+
 # `tempest_fastapi_sdk.webpush`
 
 Web Push (VAPID): envio e schemas de inscrição.

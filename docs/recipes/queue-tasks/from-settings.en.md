@@ -1,3 +1,7 @@
+---
+description: "Use to pick the queue transport in one line with `TaskQueue.from_settings` and publish atomically with the `INSERT` through the transactional outbox."
+---
+
 # Transport from settings and the outbox
 
 Use to pick the transport in one line with `from_settings` and publish atomically with the `INSERT` (outbox).

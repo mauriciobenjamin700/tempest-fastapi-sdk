@@ -1,3 +1,7 @@
+---
+description: "Use para gerar um cliente tipado de WebSocket a partir de uma spec AsyncAPI; contém geração, uso, as duas uniões por direção, validação e como manter em dia."
+---
+
 # Cliente de WebSocket (AsyncAPI)
 
 A receita de [cliente de integração (OpenAPI)](openapi-client.md) gera um

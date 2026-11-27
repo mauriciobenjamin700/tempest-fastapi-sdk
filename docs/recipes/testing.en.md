@@ -1,3 +1,7 @@
+---
+description: "Use to build a test suite for an SDK service; covers `conftest.py` with lifespan, real login, a fake LLM, in-memory repositories, `testing` helpers, `ModelFactory` and the parallel suite."
+---
+
 # Testing
 
 Use this page to build the suite of a service on the SDK: pytest +

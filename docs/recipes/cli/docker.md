@@ -1,3 +1,7 @@
+---
+description: "Use para gerar o `docker-compose.yaml` a partir dos extras (com profile `prod` e migrations), regerá-lo num projeto existente e gerar o Dockerfile da app."
+---
+
 # Docker: compose e Dockerfile
 
 Use para gerar o `docker-compose.yaml` a partir dos extras, regerá-lo num projeto existente e containerizar a app.

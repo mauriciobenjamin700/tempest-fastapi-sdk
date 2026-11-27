@@ -1,3 +1,7 @@
+---
+description: "Use para adicionar botões com código seu via `@admin_action`: mostrar um segredo uma vez, pedir dados antes de rodar e criar por service."
+---
+
 # Ações customizadas
 
 Use para adicionar botões que rodam código seu (`@admin_action`): mostrar um segredo uma vez, pedir dados antes de rodar, criar por service.

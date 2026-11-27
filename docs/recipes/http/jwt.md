@@ -1,3 +1,7 @@
+---
+description: "Use para proteger rotas por token, papel e permissão, com o `JWTUtils` criado no `create_app`."
+---
+
 # Dependências JWT bearer, usuário atual e role
 
 Use para proteger rotas por token, papel e permissão, com o `JWTUtils` criado no `create_app`.

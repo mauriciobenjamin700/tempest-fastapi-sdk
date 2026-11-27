@@ -1,3 +1,7 @@
+---
+description: "Use to paginate in the repository by offset (page 3 of 12) or by cursor (large tables) and restrict sortable columns and page size."
+---
+
 # 7. Pagination
 
 Use to paginate by offset ("page 3 of 12") or by cursor (large tables) and restrict sortable columns and page size.

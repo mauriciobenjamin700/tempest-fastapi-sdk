@@ -1,3 +1,7 @@
+---
+description: "Use to charge Pix without coupling the service to a provider (OpenPix, Mercado Pago); covers `PixChargeRequest`, `PixCharge`, swapping providers, architecture, states, webhooks and adapters."
+---
+
 # Pix protocol: one contract, many providers
 
 Your service charges over Pix. Today the provider is OpenPix; tomorrow it

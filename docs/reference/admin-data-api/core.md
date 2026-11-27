@@ -1,3 +1,7 @@
+---
+description: "Primitivas transversais: tipagem estrita, logging, redação de dados sensíveis e locale da documentação."
+---
+
 # `tempest_fastapi_sdk.core`
 
 Primitivas transversais: tipagem estrita, logging, redação de dados sensíveis e locale da documentação.

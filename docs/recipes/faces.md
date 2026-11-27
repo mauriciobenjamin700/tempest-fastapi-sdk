@@ -1,3 +1,7 @@
+---
+description: "Use para detectar rostos e comparar se duas fotos são da mesma pessoa com `FaceRecognizer`; inclui aviso de LGPD, packs de modelo e a folga medida."
+---
+
 # Reconhecimento facial
 
 Detecta rostos numa imagem e transforma cada um num vetor comparável — o

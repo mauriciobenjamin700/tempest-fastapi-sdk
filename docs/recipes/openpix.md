@@ -1,3 +1,7 @@
+---
+description: "Use para cobrar Pix avulso via OpenPix e liberar o pedido pago; contém checkout com BR Code, webhook verificado, reconciliação, estorno, centavos e teste sem rede."
+---
+
 # OpenPix (Pix via Woovi)
 
 Esta receita monta um serviço que **abre uma cobrança Pix, descobre quando ela

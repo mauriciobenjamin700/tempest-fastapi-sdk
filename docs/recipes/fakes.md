@@ -1,3 +1,7 @@
+---
+description: "Use para rodar e testar o serviço sem provedor real: fakes de Pix, cartão, email, modelo de texto, saída estruturada, geo e arquivo, e como ligá-los."
+---
+
 # Fakes: rode o fluxo inteiro sem provedor nenhum
 
 Seu serviço cobra por Pix, manda email de ativação, dispara push, geocodifica

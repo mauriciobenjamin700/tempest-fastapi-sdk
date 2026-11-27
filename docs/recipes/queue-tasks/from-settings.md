@@ -1,3 +1,7 @@
+---
+description: "Use para escolher o transporte da fila em uma linha com `TaskQueue.from_settings` e publicar atomicamente junto do `INSERT` com o outbox transacional."
+---
+
 # Transporte por settings e outbox
 
 Use para escolher o transporte em uma linha com `from_settings` e publicar de forma atômica com o `INSERT` (outbox).

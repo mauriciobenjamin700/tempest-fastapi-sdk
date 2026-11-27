@@ -1,3 +1,7 @@
+---
+description: "Slides, gabaritos e documentos Markdown em PDF a partir de texto puro."
+---
+
 # `tempest_fastapi_sdk.slides`
 
 Slides, gabaritos e documentos Markdown em PDF a partir de texto puro.

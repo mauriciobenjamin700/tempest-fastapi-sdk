@@ -1,3 +1,7 @@
+---
+description: "Application settings primitives exposed at module level."
+---
+
 # API Reference: `tempest_fastapi_sdk.settings`
 
 Application settings primitives exposed at module level.

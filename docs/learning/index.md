@@ -1,3 +1,7 @@
+---
+description: "Índice dos projetos didáticos feitos sobre o SDK, com regras de negócio, UML, mapa de endpoints e testes; como usar a seção e próximos projetos."
+---
+
 # Projetos de aprendizado
 
 Esta seção reúne projetos didáticos construídos **inteiramente sobre o `tempest-fastapi-sdk`** para você aprender a usar o SDK na prática. Cada projeto traz:

@@ -1,3 +1,7 @@
+---
+description: "Use para integrar o serviço ao Kestra nas duas direções; contém subir o Kestra, rotas do serviço, flows YAML, disparo via `HTTPClient` e entrega garantida com outbox e inbox."
+---
+
 # Kestra (orquestrador de workflows)
 
 [Kestra](https://kestra.io) roda *flows* declarativos em YAML — chamar uma

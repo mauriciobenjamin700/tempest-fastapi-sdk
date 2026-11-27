@@ -1,3 +1,7 @@
+---
+description: "Use para ver os recursos do painel admin combinados numa loja: auditoria, autocomplete FK, inlines, cards, import CSV e notificações SSE + Web Push."
+---
+
 # Exemplo integrado — admin de loja completo
 
 Este exemplo junta **todos** os recursos do painel admin num app só — uma

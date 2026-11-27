@@ -1,3 +1,7 @@
+---
+description: "Use to validate configuration before serving traffic with `tempest check-config`; covers built-in checks, writing your own, failing at startup and the `EnvironmentSettings` production guard."
+---
+
 # System checks (`tempest check-config`)
 
 Validate configuration **before** serving traffic — empty signing

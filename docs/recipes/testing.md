@@ -1,3 +1,7 @@
+---
+description: "Use para montar a suíte de testes de um serviço do SDK; contém `conftest.py` com lifespan, login real, LLM fake, repository em memória, helpers de `testing`, `ModelFactory` e suíte paralela."
+---
+
 # Testes
 
 Use esta página para montar a suíte de um serviço do SDK: pytest +

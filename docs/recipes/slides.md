@@ -1,3 +1,7 @@
+---
+description: "Use para transformar texto de aula em apresentação, gabarito ou PDF; contém o primeiro deck, vocabulário na língua do serviço, formatos, Markdown em PDF com imagens e Mermaid, e rota HTTP."
+---
+
 # Slides, gabaritos e Markdown em PDF
 
 Um serviço que ensina — ou que pede a um modelo de linguagem para montar uma

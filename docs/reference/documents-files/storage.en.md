@@ -1,3 +1,7 @@
+---
+description: "Object-storage primitives — MinIO / S3-compatible, or the local disk."
+---
+
 # API Reference: `tempest_fastapi_sdk.storage`
 
 Object-storage primitives — MinIO / S3-compatible, or the local disk.

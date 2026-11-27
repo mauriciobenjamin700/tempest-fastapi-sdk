@@ -1,3 +1,7 @@
+---
+description: "Use para escrever ferramentas de agente que chamam uma API externa ou estruturam texto livre; contém `@tool`, `typed_tool`, `text_tool`, `schema_of` e `final_answer_tool`."
+---
+
 # Agentes de IA (ferramentas)
 
 Quase toda ferramenta que um serviço escreve cai numa de três famílias:

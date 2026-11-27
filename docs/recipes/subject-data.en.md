@@ -1,3 +1,7 @@
+---
+description: "Use to fulfil LGPD/GDPR data-subject export and erasure requests; covers a schema built for deletion, a CI guard, exporting and erasing rows and files, and uploads under the subject prefix."
+---
+
 # Data subject export and erasure (LGPD)
 
 Brazil's LGPD (art. 18) — like GDPR arts. 15 and 17 — gives the data subject

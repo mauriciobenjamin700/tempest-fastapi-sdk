@@ -1,3 +1,7 @@
+---
+description: "Use to see complete self-hosted GenAI flows: load a model only if it fits, RAG over PDFs, SearXNG web grounding, a local voice assistant and a transcription endpoint."
+---
+
 # GenAI examples — complete flows
 
 The [generative-AI recipe](recipes/genai.md) documents each piece; here

@@ -1,3 +1,7 @@
+---
+description: "Use quando a fila RabbitMQ precisa de topologia declarada com `QueueSpec`; contém exchange obrigatório, fan-out por consumidor, reprocessar a dead-letter queue e campo recusado."
+---
+
 # Topologia da fila com `QueueSpec`
 
 Use quando a fila precisa sobreviver a restart, ter fan-out, dead-letter reprocessável e exchange declarado.

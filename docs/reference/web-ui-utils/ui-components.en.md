@@ -1,3 +1,7 @@
+---
+description: "Components: the reusable pieces pages are built from."
+---
+
 # API Reference: `tempest_fastapi_sdk.ui.components`
 
 Components: the reusable pieces pages are built from.

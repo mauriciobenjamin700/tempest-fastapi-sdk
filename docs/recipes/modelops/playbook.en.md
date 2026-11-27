@@ -1,3 +1,7 @@
+---
+description: "Look up to decide where to optimize a model from measurements; covers estimator choice, transport cost, monitoring cost, cold start and the order of attack."
+---
+
 # Playbook: where time and bytes go
 
 Look up the measured decisions, in order of attack: estimator, transport, monitoring cost and cold start.

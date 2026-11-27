@@ -1,3 +1,7 @@
+---
+description: "Use to store files on local disk without an S3 server; covers `LocalObjectStorageClient`, links via the API, capped uploads, picking the backend by settings and encryption at rest."
+---
+
 # Storage on local disk — `LocalObjectStorageClient`
 
 Your service keeps photos, exports and attachments, and until now that meant

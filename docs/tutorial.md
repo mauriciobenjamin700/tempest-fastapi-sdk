@@ -1,3 +1,7 @@
+---
+description: "Use para aprender as convenções do SDK construindo a feature Users ponta a ponta; contém layout, settings, model, schemas, exceções, repository, service, controller, router e paginação."
+---
+
 # Tutorial — construindo a feature *Users*
 
 Este tutorial passa pela conexão da feature **Users** usando todas as convenções do SDK. Ao final você terá:

@@ -1,3 +1,7 @@
+---
+description: "Use to generate a typed client and Pydantic schemas from a third party's OpenAPI; covers the output, options, authenticated or YAML specs, coverage and gate-clean code."
+---
+
 # Integration client from an OpenAPI spec
 
 Integrating with a third party is, today, manual transcription: you open their

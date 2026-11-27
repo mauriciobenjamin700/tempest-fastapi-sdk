@@ -1,3 +1,7 @@
+---
+description: "The whole OpenPix surface, ready to import."
+---
+
 # API Reference: `tempest_fastapi_sdk.integrations.payment.openpix`
 
 The whole OpenPix surface, ready to import.

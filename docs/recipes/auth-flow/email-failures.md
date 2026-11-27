@@ -1,3 +1,7 @@
+---
+description: "Use para saber o que cada rota do fluxo responde com `EMAIL_ENABLED=false` ou SMTP fora do ar, e quando usar `AUTH_SEND_EMAILS_IN_BACKGROUND`."
+---
+
 # E-mail desligado e SMTP fora do ar
 
 Use para saber o que cada rota responde com `EMAIL_ENABLED=false` ou com o SMTP falhando, e quando mandar e-mail em background.

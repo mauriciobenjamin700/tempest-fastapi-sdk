@@ -1,3 +1,7 @@
+---
+description: "Use for migrations with `AlembicHelper`: bootstrap, generate and apply revisions at startup, block schema drift in CI and migrate constraints from the old convention."
+---
+
 # 8. Alembic migrations
 
 Use to bootstrap Alembic, generate and apply revisions, block drift in CI and migrate constraints from the old convention.

@@ -1,3 +1,7 @@
+---
+description: "Use to schedule periodic tasks on the same `TaskQueue`; covers `cron`, `interval` and the `CronEnum`, `CronOffsetEnum` and `WeekdayEnum` helpers so you skip raw cron."
+---
+
 # Periodic tasks: `cron` and `interval`
 
 Use to schedule periodic tasks on the same `TaskQueue`, with no separate scheduler in your code.

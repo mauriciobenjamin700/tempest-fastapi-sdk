@@ -1,3 +1,7 @@
+---
+description: "Use para gerar cliente e schemas Pydantic tipados a partir do OpenAPI de um terceiro; contém o que sai, opções, spec autenticada ou YAML, cobertura e o código passando nos gates."
+---
+
 # Cliente de integração a partir de um OpenAPI
 
 Integrar com um sistema de terceiros é, hoje, transcrição manual: você abre a

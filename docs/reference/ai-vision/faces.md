@@ -1,3 +1,7 @@
+---
+description: "Detecção e reconhecimento facial em ONNX Runtime: detector, reconhecedor, alinhamento e pacotes de modelo."
+---
+
 # `tempest_fastapi_sdk.faces`
 
 Detecção e reconhecimento facial em ONNX Runtime: detector, reconhecedor, alinhamento e pacotes de modelo.

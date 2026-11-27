@@ -1,3 +1,7 @@
+---
+description: "zap-api — the in-house WhatsApp gateway."
+---
+
 # API Reference: `tempest_fastapi_sdk.integrations.messaging.zap`
 
 zap-api — the in-house WhatsApp gateway.

@@ -1,3 +1,7 @@
+---
+description: "Carteira: saldo, extrato, retenções e saque Pix em centavos inteiros."
+---
+
 # `tempest_fastapi_sdk.wallet`
 
 Carteira: saldo, extrato, retenções e saque Pix em centavos inteiros.

@@ -1,3 +1,7 @@
+---
+description: "Use to strip GPS, device and EXIF thumbnail data from uploaded photos before storing; covers a clean upload route, what is kept, errors, the pixel cap and re-encode quality."
+---
+
 # Image metadata — cleaning a user's photo
 
 A photo taken on a phone carries more than pixels. Inside the file go the

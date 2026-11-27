@@ -1,3 +1,7 @@
+---
+description: "Run two Pix providers side by side while moving from one to the other."
+---
+
 # API Reference: `tempest_fastapi_sdk.integrations.payment.routing`
 
 Run two Pix providers side by side while moving from one to the other.

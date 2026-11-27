@@ -1,3 +1,7 @@
+---
+description: "Use to receive RevenueCat in-app subscription webhooks; covers header and HMAC authentication, an idempotent inbox, `normalize` into state and reconciliation through the API."
+---
+
 # RevenueCat (in-app subscriptions)
 
 A Flutter (or native) app that sells subscriptions through the App Store and

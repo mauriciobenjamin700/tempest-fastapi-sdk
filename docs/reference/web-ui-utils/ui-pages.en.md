@@ -1,3 +1,7 @@
+---
+description: "Pages: one class per screen, composed of components."
+---
+
 # API Reference: `tempest_fastapi_sdk.ui.pages`
 
 Pages: one class per screen, composed of components.

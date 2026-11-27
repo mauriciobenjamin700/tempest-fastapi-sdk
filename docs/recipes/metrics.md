@@ -1,3 +1,7 @@
+---
+description: "Use para expor métricas Prometheus de HTTP e de negócio ou ver CPU, RAM, disco e GPU do host; contém `PrometheusMiddleware`, `BusinessMetrics` e `MetricsUtils`."
+---
+
 # Métricas
 
 O SDK oferece **dois caminhos complementares** de métricas:

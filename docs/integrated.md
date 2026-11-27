@@ -1,3 +1,7 @@
+---
+description: "Use para ver um checkout Pix ponta a ponta: JWT, cache com `@cached`, outbox na mesma transação, e-mail em background e notificação SSE + Web Push."
+---
+
 # Exemplo integrado — checkout com Pix
 
 O [tour do SDK](recipes/index.md#tour-do-sdk-um-exemplo-por-bloco) mostra cada peça isolada. Aqui elas trabalham **juntas**

@@ -1,3 +1,7 @@
+---
+description: "Use to learn the marketplace domain contract: numbered MUST/MAY rules for users, orgs, invites, stock, cart, orders, reviews and quotas."
+---
+
 # Business rules — Marketplace
 
 This page is the **domain contract**. Every modeling, endpoint, or test decision in the project must be justifiable by a rule listed here. When the code disagrees with the rule, the code is wrong (or the rule needs an RFC before it changes).

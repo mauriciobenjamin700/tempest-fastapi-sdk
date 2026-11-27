@@ -1,3 +1,7 @@
+---
+description: "Online multiplayer rooms: a relay server for games, over WebSocket or TCP."
+---
+
 # API Reference: `tempest_fastapi_sdk.rooms`
 
 Online multiplayer rooms: a relay server for games, over WebSocket or TCP.

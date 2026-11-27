@@ -1,3 +1,7 @@
+---
+description: "Use quando o serviço serve o próprio HTML e precisa de login, cadastro e ativação sem SPA; contém `make_auth_pages_router`, `SessionAuth`, MFA, templates e testes."
+---
+
 # Login e cadastro server-side
 
 Seu serviço serve o próprio HTML — um painel, um portal, uma ferramenta interna — e precisa de login, cadastro e ativação de conta **sem** um frontend separado. O `make_auth_router` fala JSON com uma SPA; aqui você monta as mesmas regras como **páginas**: o navegador recebe um formulário, envia um `<form>` POST sem JavaScript, e a sessão é um cookie.

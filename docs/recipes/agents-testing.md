@@ -1,3 +1,7 @@
+---
+description: "Use para testar um agente sem depender do modelo: teste mínimo, recuperação de erro, orçamento, skills, memória, queda do backend e quando usar o modelo real."
+---
+
 # Testar e validar um agente
 
 O comportamento de um agente depende do que o modelo decide, o que dá a

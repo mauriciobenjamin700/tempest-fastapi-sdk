@@ -1,3 +1,7 @@
+---
+description: "Layout: the structural containers a page arranges its content in."
+---
+
 # API Reference: `tempest_fastapi_sdk.ui.layout`
 
 Layout: the structural containers a page arranges its content in.

@@ -1,3 +1,7 @@
+---
+description: "Salas multiplayer online: um servidor de relay para jogos, sobre WebSocket ou TCP."
+---
+
 # `tempest_fastapi_sdk.rooms`
 
 Salas multiplayer online: um servidor de relay para jogos, sobre WebSocket ou TCP.

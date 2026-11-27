@@ -1,3 +1,7 @@
+---
+description: "Cache Redis assíncrono, o decorator `@cached` e a invalidação por chave e por tag."
+---
+
 # `tempest_fastapi_sdk.cache`
 
 Cache Redis assíncrono, o decorator `@cached` e a invalidação por chave e por tag.

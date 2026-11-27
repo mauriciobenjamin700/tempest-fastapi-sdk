@@ -1,3 +1,7 @@
+---
+description: "Use to enable a SQL console in the admin with guardrails: capability policy, deny over allow, auditing, rolled-back reads and a production checklist."
+---
+
 # SQL console in the admin
 
 Every serious admin panel grows one of these — phpMyAdmin, Adminer,

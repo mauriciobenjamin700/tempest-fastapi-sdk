@@ -1,3 +1,7 @@
+---
+description: "Áudio self-hosted: fala para texto e texto para fala."
+---
+
 # `tempest_fastapi_sdk.genai.audio`
 
 Áudio self-hosted: fala para texto e texto para fala.

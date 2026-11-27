@@ -1,3 +1,7 @@
+---
+description: "Use para descobrir onde o tempo vai numa request; contém tracing distribuído com OpenTelemetry, amostragem, modo sem coletor e o `SlowQueryLogger` com EXPLAIN em dev."
+---
+
 # Observabilidade (tracing + slow queries)
 
 Logs te dizem **o que** aconteceu num serviço; tracing distribuído te diz

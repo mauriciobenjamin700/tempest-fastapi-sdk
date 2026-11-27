@@ -1,3 +1,7 @@
+---
+description: "Use when mapping an enum to a column: what the SDK changes in SQLAlchemy defaults, `CHECK`, Postgres ENUM type and how to migrate, rename and downgrade."
+---
+
 # Enum columns (safe on both databases)
 
 SQLAlchemy already maps `Mapped[MyEnum]` to a column. Its defaults,

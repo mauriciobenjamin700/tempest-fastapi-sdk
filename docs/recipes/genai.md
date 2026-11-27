@@ -1,3 +1,7 @@
+---
+description: "Índice da IA generativa self-hosted no seu hardware: aponta a subpágina de cada tarefa (hardware, texto, áudio, RAG, chat, memória, operação)."
+---
+
 # IA generativa self-hosted
 
 Rodar modelos do HuggingFace no **seu próprio hardware** — sem API

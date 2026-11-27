@@ -1,3 +1,7 @@
+---
+description: "Use para distância, tempo de viagem, rotas e geocoding sem API paga; cobre Haversine, OSRM, busca por raio no banco, geofence e CEP/UF do Brasil."
+---
+
 # Geolocalização (distância + tempo)
 
 Precisa saber **quantos km** separam dois pontos e **quanto tempo** leva a

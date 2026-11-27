@@ -1,3 +1,7 @@
+---
+description: "Messenger building blocks — conversations, messages, media, receipts."
+---
+
 # API Reference: `tempest_fastapi_sdk.chat`
 
 Messenger building blocks — conversations, messages, media, receipts.

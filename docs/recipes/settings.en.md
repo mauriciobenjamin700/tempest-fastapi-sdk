@@ -1,3 +1,7 @@
+---
+description: "Use to build the service `Settings` class from the SDK mixins; covers base ordering, `BaseAppSettings` last, `*_kwargs()` for clients and a table of environment variables per mixin."
+---
+
 # Settings: composing the configuration mixins
 
 Use this page to build the service's `Settings` class: which mixin brings each

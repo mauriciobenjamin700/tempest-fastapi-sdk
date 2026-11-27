@@ -1,3 +1,7 @@
+---
+description: "The task panel's data source: declared schedule and persisted runs."
+---
+
 # API Reference: `tempest_fastapi_sdk.admin.tasks`
 
 The task panel's data source: declared schedule and persisted runs.

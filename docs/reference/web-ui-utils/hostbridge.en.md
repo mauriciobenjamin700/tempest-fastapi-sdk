@@ -1,3 +1,7 @@
+---
+description: "Control the machine a service runs on — power, files, PDFs, commands."
+---
+
 # API Reference: `tempest_fastapi_sdk.hostbridge`
 
 Control the machine a service runs on — power, files, PDFs, commands.

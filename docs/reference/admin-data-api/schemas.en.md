@@ -1,3 +1,7 @@
+---
+description: "Pydantic schema primitives exposed at module level."
+---
+
 # API Reference: `tempest_fastapi_sdk.schemas`
 
 Pydantic schema primitives exposed at module level.

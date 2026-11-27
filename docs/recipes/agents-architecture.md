@@ -1,3 +1,7 @@
+---
+description: "Use ao passar do segundo agente: layout de pastas com `runtime.py`, tools, schemas, views, `policy.py` e prompts, direção dos imports, endpoint e auditoria."
+---
+
 # Agentes de IA (arquitetura)
 
 Uma ferramenta e um agente cabem confortavelmente num arquivo só. O **segundo**

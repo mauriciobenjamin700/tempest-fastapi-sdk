@@ -1,3 +1,7 @@
+---
+description: "Use para adicionar login por passkey resistente a phishing; contém tabela de credenciais, settings, router, frontend, store de desafios multi-worker, recuperação de conta e relação com MFA."
+---
+
 # WebAuthn / passkeys
 
 O TOTP prova que o usuário tem um segredo compartilhado. Uma página de phishing

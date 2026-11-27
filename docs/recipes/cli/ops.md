@@ -1,3 +1,7 @@
+---
+description: "Use para operar a infraestrutura pela CLI: fila e tasks, teste de e-mail, object store, feature flags, cache, modelos e diagnóstico com `tempest doctor`."
+---
+
 # Fila, e-mail, storage, flags, cache, modelos e doctor
 
 Use para operar a infraestrutura pela linha de comando: fila e tasks, teste de e-mail, object store, feature flags, cache, modelos e diagnóstico.

@@ -1,3 +1,7 @@
+---
+description: "Use para ligar um frontend em Python (tempestweb) a um backend do SDK por HTTP tipado; contém backend, frontend, idempotência ponta a ponta, retry tipado e CORS por origem."
+---
+
 # Frontend tempestweb + backend tempest-fastapi-sdk
 
 **Qual problema resolve:** você quer um frontend rico em Python (tempestweb)

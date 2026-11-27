@@ -1,3 +1,7 @@
+---
+description: "Use when the service must return HTML through the `src/ui/` layer; covers the folder tree, a minimal example, ready-made components, layout, custom components and the scaffold."
+---
+
 # UI layer (pages and components)
 
 An interface layer **beside** `controllers`, `services` and `schemas` —

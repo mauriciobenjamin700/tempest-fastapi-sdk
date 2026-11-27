@@ -1,3 +1,7 @@
+---
+description: "Inferência de visão computacional (extra `[vision]`): schemas, mappers e o serviço sobre o `ort-vision-sdk`."
+---
+
 # `tempest_fastapi_sdk.vision`
 
 Inferência de visão computacional (extra `[vision]`): schemas, mappers e o serviço sobre o `ort-vision-sdk`.

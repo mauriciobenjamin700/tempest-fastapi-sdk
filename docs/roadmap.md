@@ -1,3 +1,7 @@
+---
+description: "Use para ver o que o SDK já entrega e o que está no backlog; contém tiers S, A e B com status e versão, evolução do painel admin, próximos passos e entregas por versão."
+---
+
 # Roadmap
 
 Esta página registra o backlog que guiou o SDK e o que dele já foi entregue — hoje, todo o Tier S abaixo está marcado ✅ com a versão que o trouxe. Ordenado por impacto, não por ordem de implementação — a release é puxada pela pressão de negócio, não pela posição na lista.

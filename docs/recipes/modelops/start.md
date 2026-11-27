@@ -1,3 +1,7 @@
+---
+description: "Use no primeiro contato com o `modelops`; contém um exemplo executável com dataset do scikit-learn, um guia para achar o seu caso e o vocabulário básico do módulo."
+---
+
 # Comece por aqui
 
 Use na primeira vez: um exemplo que roda como está, qual é o seu caso e as cinco palavras do módulo.

@@ -1,3 +1,7 @@
+---
+description: "Use para expor ferramentas do serviço via MCP ou consumir outro servidor MCP num `Agent`; contém `mount_mcp`, auth, sessão, `add_agent_tools`, `add_fastapi_routes` e stdio."
+---
+
 # MCP (Model Context Protocol)
 
 O [MCP](https://modelcontextprotocol.io) é o protocolo com que um cliente de

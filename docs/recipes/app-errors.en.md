@@ -1,3 +1,7 @@
+---
+description: "Use to collect error reports from the client app (mobile/web); covers the table, the public endpoint, truncation, `user_id` from the token, filtered listing and rate limit."
+---
+
 # App errors: when the client breaks in the user's hand
 
 Your mobile app threw a `TypeError` on the payment screen. The user closed

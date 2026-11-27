@@ -1,3 +1,7 @@
+---
+description: "Use to search text over models; covers portable `search()` (LIKE) on PostgreSQL and SQLite, request-chosen fields, pagination and `full_text_search()` with per-field weights."
+---
+
 # Text search (LIKE + full-text)
 
 Two layers, because they answer different questions. The portable one

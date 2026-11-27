@@ -1,3 +1,7 @@
+---
+description: "Use para trocar o refresh JWT stateless por token opaco no banco; contém setup com `refresh_token_model`, rotação, detecção de reuso, logout com revogação e o service direto."
+---
+
 # Refresh tokens DB-backed (rotação + revogação)
 
 Desde **v0.66.0** o fluxo de auth bundled pode trocar o refresh token JWT *stateless* por um token **opaco persistido no banco**, ganhando três coisas que um JWT puro nunca te dá: **rotação real**, **detecção de reuso** (token roubado) e **revogação** (logout que mata a sessão antes do expiry).

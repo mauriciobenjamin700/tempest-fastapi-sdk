@@ -1,3 +1,7 @@
+---
+description: "Server-Sent Events helpers built on top of Starlette streaming."
+---
+
 # API Reference: `tempest_fastapi_sdk.sse`
 
 Server-Sent Events helpers built on top of Starlette streaming.

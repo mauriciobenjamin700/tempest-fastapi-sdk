@@ -1,3 +1,7 @@
+---
+description: "Sessão do lado do servidor: store, serviço, middleware e router."
+---
+
 # `tempest_fastapi_sdk.sessions`
 
 Sessão do lado do servidor: store, serviço, middleware e router.

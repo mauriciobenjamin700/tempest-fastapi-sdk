@@ -1,3 +1,7 @@
+---
+description: "Use when an entity holds one storage key (avatar, attachment); covers `StoredFileServiceMixin` with `set_file`, `file_url`, `file_urls` and `clear_file`, and multiple fields."
+---
+
 # File on the service — `StoredFileServiceMixin`
 
 An entity almost always carries **one** storage key: the user's avatar, an

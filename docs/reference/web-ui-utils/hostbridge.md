@@ -1,3 +1,7 @@
+---
+description: "Controle da máquina em que o serviço roda: energia, arquivos, PDFs e comandos."
+---
+
 # `tempest_fastapi_sdk.hostbridge`
 
 Controle da máquina em que o serviço roda: energia, arquivos, PDFs e comandos.

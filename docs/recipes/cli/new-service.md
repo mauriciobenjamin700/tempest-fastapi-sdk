@@ -1,3 +1,7 @@
+---
+description: "Use para escolher entre `[cli-ops]` e `[cli]`, gerar um serviço novo com `tempest new` e trazer camadas ou projeto antigo ao padrão com `tempest generate`."
+---
+
 # Instalar e gerar um serviço
 
 Use para escolher entre `[cli-ops]` e `[cli]`, gerar um serviço novo e trazer um projeto existente ao padrão (`tempest new`, `tempest generate`).

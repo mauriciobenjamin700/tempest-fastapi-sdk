@@ -1,3 +1,7 @@
+---
+description: "Computer-vision inference integration (optional `[vision]` extra)."
+---
+
 # API Reference: `tempest_fastapi_sdk.vision`
 
 Computer-vision inference integration (optional `[vision]` extra).

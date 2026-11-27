@@ -1,3 +1,7 @@
+---
+description: "Use to test signup, activation, login and a protected route without a frontend (curl, Swagger, mobile); covers a one-file app, dev `.env` and the cycle in a test."
+---
+
 # Backend only: from signup to a protected route
 
 Use to test signup → activation → login → protected route without a frontend (curl, Swagger, mobile app) and the same cycle in a test.

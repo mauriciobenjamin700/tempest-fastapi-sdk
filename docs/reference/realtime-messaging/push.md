@@ -1,3 +1,7 @@
+---
+description: "Push unificado: uma API para navegador e celular, com o model de token de dispositivo."
+---
+
 # `tempest_fastapi_sdk.push`
 
 Push unificado: uma API para navegador e celular, com o model de token de dispositivo.

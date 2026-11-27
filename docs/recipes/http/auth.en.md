@@ -1,3 +1,7 @@
+---
+description: "Use to see signup, login and a protected route with `PasswordUtils` and `JWTUtils` in one example."
+---
+
 # End-to-end authentication
 
 Use to see signup, login and a protected route with `PasswordUtils` and `JWTUtils` in one example.

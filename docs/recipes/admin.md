@@ -1,3 +1,7 @@
+---
+description: "Use para ter um painel admin estilo Django sob `/admin`; contém o que ele entrega, a instalação e o índice das subpáginas por tarefa."
+---
+
 # Painel admin
 
 

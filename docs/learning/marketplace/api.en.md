@@ -1,3 +1,7 @@
+---
+description: "Use to look up the marketplace REST API in one table: auth, orgs, invites, catalog, stock, orders, reviews, notifications and a checkout payload."
+---
+
 # Endpoint map
 
 The full REST API of the marketplace in a single table, ready to paste into the frontend contract.

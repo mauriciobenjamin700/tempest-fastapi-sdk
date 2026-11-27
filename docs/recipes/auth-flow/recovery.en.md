@@ -1,3 +1,7 @@
+---
+description: "Use when the activation email never arrived, the user forgot the password or wants to change it while logged in; covers re-send, password reset and logged-in change."
+---
+
 # Re-send activation and recover a password
 
 Use when the activation email never arrived, when the user forgot the password or wants to change it while logged in.

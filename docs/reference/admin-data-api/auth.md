@@ -1,3 +1,7 @@
+---
+description: "O fluxo de autenticação embutido: cadastro, ativação, login, reset de senha, JWT, OAuth e MFA TOTP."
+---
+
 # `tempest_fastapi_sdk.auth`
 
 O fluxo de autenticação embutido: cadastro, ativação, login, reset de senha, JWT, OAuth e MFA TOTP.

@@ -1,3 +1,7 @@
+---
+description: "Use quando o serviço precisa entregar HTML pela camada `src/ui/`; contém a árvore de pastas, exemplo mínimo, componentes prontos, layout, componentes próprios e o scaffold."
+---
+
 # Camada UI (páginas e componentes)
 
 Uma camada de interface **no mesmo nível** de `controllers`, `services` e

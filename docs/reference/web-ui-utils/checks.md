@@ -1,3 +1,7 @@
+---
+description: "System checks estilo Django: validação de configuração no startup."
+---
+
 # `tempest_fastapi_sdk.checks`
 
 System checks estilo Django: validação de configuração no startup.

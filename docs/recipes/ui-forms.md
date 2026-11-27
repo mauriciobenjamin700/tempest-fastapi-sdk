@@ -1,3 +1,7 @@
+---
+description: "Use para gerar formulário HTML acessível a partir de um schema Pydantic; contém mapeamento por tipo, ajuste por campo, leitura da submissão, `form_dependency` e upload de arquivo."
+---
+
 # Formulários a partir de schemas Pydantic
 
 O schema que valida o request já descreve o formulário: nomes, tipos,

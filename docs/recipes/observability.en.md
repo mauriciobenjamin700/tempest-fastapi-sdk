@@ -1,3 +1,7 @@
+---
+description: "Use to find where a request spends its time; covers distributed tracing with OpenTelemetry, sampling, collector-less mode and `SlowQueryLogger` with EXPLAIN in dev."
+---
+
 # Observability (tracing + slow queries)
 
 Logs tell you **what** happened in a service; distributed tracing tells you

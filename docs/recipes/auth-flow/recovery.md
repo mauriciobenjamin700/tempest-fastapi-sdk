@@ -1,3 +1,7 @@
+---
+description: "Use quando o e-mail de ativação não chegou, o usuário esqueceu a senha ou quer trocá-la logado; contém reenvio de ativação, reset de senha e troca logada."
+---
+
 # Reenviar ativação e recuperar senha
 
 Use quando o e-mail de ativação não chegou, quando o usuário esqueceu a senha ou quer trocá-la logado.

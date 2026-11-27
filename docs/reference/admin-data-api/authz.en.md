@@ -1,3 +1,7 @@
+---
+description: "Object-level authorization primitives."
+---
+
 # API Reference: `tempest_fastapi_sdk.authz`
 
 Object-level authorization primitives.

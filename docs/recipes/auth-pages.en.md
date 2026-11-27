@@ -1,3 +1,7 @@
+---
+description: "Use when the service serves its own HTML and needs login, signup and activation without an SPA; covers `make_auth_pages_router`, `SessionAuth`, MFA, templates and tests."
+---
+
 # Server-side login and signup
 
 Your service serves its own HTML — a panel, a portal, an internal tool — and needs login, signup and account activation **without** a separate frontend. `make_auth_router` speaks JSON to an SPA; here you get the same rules as **pages**: the browser receives a form, posts a `<form>` without JavaScript, and the session is a cookie.

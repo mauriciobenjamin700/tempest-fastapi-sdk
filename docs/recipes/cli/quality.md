@@ -1,3 +1,7 @@
+---
+description: "Use para rodar os gates de qualidade (ruff, mypy, pytest) pela CLI e saber quais passos do SDK o `tempest check` executa, incluindo `lint-schemas`."
+---
+
 # Gates de qualidade e `tempest check`
 
 Use para rodar os gates de qualidade e saber quais passos do SDK o `tempest check` executa.

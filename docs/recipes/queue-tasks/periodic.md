@@ -1,3 +1,7 @@
+---
+description: "Use para agendar tarefas periódicas no mesmo `TaskQueue`; contém `cron`, `interval` e os enums `CronEnum`, `CronOffsetEnum` e `WeekdayEnum` para não decorar cron."
+---
+
 # Tarefas periódicas: `cron` e `interval`
 
 Use para agendar tarefas periódicas no mesmo `TaskQueue`, sem scheduler separado no seu código.

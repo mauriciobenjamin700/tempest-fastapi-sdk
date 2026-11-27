@@ -1,3 +1,7 @@
+---
+description: "Use para ligar um console SQL no admin com grades de proteção: política de capacidades, deny sobre allow, auditoria, leitura revertida e checklist de produção."
+---
+
 # Console SQL no admin
 
 Todo painel administrativo sério acaba criando um destes — phpMyAdmin,

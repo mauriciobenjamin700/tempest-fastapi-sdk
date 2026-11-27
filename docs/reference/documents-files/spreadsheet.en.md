@@ -1,3 +1,7 @@
+---
+description: "Spreadsheet generation — `.xlsx` documents a recipient can work with."
+---
+
 # API Reference: `tempest_fastapi_sdk.spreadsheet`
 
 Spreadsheet generation — `.xlsx` documents a recipient can work with.

@@ -1,3 +1,7 @@
+---
+description: "Exportação e apagamento de dados do titular (LGPD art. 18, GDPR art. 15/17)."
+---
+
 # `tempest_fastapi_sdk.privacy`
 
 Exportação e apagamento de dados do titular (LGPD art. 18, GDPR art. 15/17).

@@ -1,3 +1,7 @@
+---
+description: "Use para a busca global do admin por `search_fields`; traz também sessão segura, backend de auth próprio, painel de tasks, navegador de storage e `AdminTheme`."
+---
+
 # Busca global
 
 Use para buscar um termo em todo model com `search_fields` pela caixa de busca no topo do painel.

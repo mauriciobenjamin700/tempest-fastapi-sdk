@@ -1,3 +1,7 @@
+---
+description: "Use para ações de painel SSR que confirmam, avisam e voltam à tela de origem; contém confirmação antes de remover, flash de leitura única, redirect-back sem open redirect e exceção."
+---
+
 # Ações SSR: confirmação, flash e redirect-back
 
 Todo painel SSR repete o mesmo fluxo em cada ação:

@@ -1,3 +1,7 @@
+---
+description: "Use para costurar áudio, transcrição, resumo e sugestões num pipeline em estágios; contém colunas de estado, cancelamento em andamento, uso por usuário e a tela."
+---
+
 # Pipeline de transcrição — do áudio ao resumo, com estágios
 
 Uma reunião de cinquenta minutos entra como upload e sai como três coisas

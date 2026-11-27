@@ -1,3 +1,7 @@
+---
+description: "Index of the `tempest` CLI (`[cli]` and `[cli-ops]` extras): scaffold a service and run quality gates; maps each command-line task to its subpage."
+---
+
 # CLI
 
 

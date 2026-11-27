@@ -1,3 +1,7 @@
+---
+description: "Use para ver signup, login e rota protegida com `PasswordUtils` e `JWTUtils` num exemplo só."
+---
+
 # Autenticação de ponta a ponta
 
 Use para ver signup, login e rota protegida com `PasswordUtils` e `JWTUtils` num exemplo só.

@@ -1,3 +1,7 @@
+---
+description: "The whole Mercado Pago surface, ready to import."
+---
+
 # API Reference: `tempest_fastapi_sdk.integrations.payment.mercado_pago`
 
 The whole Mercado Pago surface, ready to import.

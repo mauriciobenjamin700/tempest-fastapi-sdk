@@ -1,3 +1,7 @@
+---
+description: "Use to add reliability to background tasks; covers typed `RetryPolicy`, dead-letter for terminal failures, per-task Prometheus metrics and the admin dead-letter panel."
+---
+
 # Task reliability and observability
 
 Use to turn on typed retry, dead-letter, per-task Prometheus metrics and the dead-letter panel in the admin.

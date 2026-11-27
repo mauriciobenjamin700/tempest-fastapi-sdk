@@ -1,3 +1,7 @@
+---
+description: "Use para cachear dados caros em Redis; contém `AsyncRedisManager`, o decorator `@cached`, invalidação por tag/namespace, cache-aside e negative caching."
+---
+
 # Cache
 
 Bater no banco repetidamente para os mesmos dados caros custa latência e carga. Esta receita entrega três blocos apoiados em Redis: um cliente gerenciado (`AsyncRedisManager`) com lifespan e health-check, um decorator de memoização (`@cached`) que guarda o retorno de funções async, e a invalidação por tag/namespace (`CacheInvalidator`) para derrubar entradas antes do TTL. Os blocos aparecem nessa ordem — primeiro o cliente, depois a memoização, depois a invalidação. Requer o extra `[cache]`.

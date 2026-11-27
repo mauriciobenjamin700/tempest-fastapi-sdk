@@ -1,3 +1,7 @@
+---
+description: "Use to turn lesson text into slides, answer keys or PDF; covers the first deck, vocabulary in the service language, output formats, Markdown to PDF with images and Mermaid, and HTTP serving."
+---
+
 # Slides, answer keys and Markdown to PDF
 
 A service that teaches — or that asks a language model to put a lesson

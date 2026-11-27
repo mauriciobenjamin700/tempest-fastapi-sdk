@@ -1,3 +1,7 @@
+---
+description: "Use to cache expensive data in Redis; covers `AsyncRedisManager`, the `@cached` decorator, tag/namespace invalidation, cache-aside and negative caching."
+---
+
 # Cache
 
 Hitting the database over and over for the same expensive data costs latency and load. This recipe delivers three Redis-backed blocks: a managed client (`AsyncRedisManager`) with lifespan and health-check, a memoization decorator (`@cached`) that stores async function results, and tag/namespace invalidation (`CacheInvalidator`) to drop entries before their TTL. The blocks appear in that order — the client first, then memoization, then invalidation. Requires the `[cache]` extra.

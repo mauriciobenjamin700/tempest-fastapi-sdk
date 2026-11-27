@@ -1,3 +1,7 @@
+---
+description: "Use when stuck on a tool question; a curated index of official docs for language, web, database, infrastructure, code quality and UI."
+---
+
 # Official reference docs
 
 When you get stuck, the answer is almost always in the tool's official documentation — not in a blog post from 2019. This page is the curated index of those sources, grouped by what the SDK actually uses.

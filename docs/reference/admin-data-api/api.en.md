@@ -1,3 +1,7 @@
+---
+description: "FastAPI integration primitives exposed at module level."
+---
+
 # API Reference: `tempest_fastapi_sdk.api`
 
 FastAPI integration primitives exposed at module level.

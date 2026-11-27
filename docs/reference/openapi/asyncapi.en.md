@@ -1,3 +1,7 @@
+---
+description: "AsyncAPI 3.0: generating a typed WebSocket client from a document."
+---
+
 # API Reference: `tempest_fastapi_sdk.asyncapi`
 
 AsyncAPI 3.0: generating a typed WebSocket client from a document.

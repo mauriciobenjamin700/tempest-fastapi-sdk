@@ -1,3 +1,7 @@
+---
+description: "Use to wire the auth flow from scratch: `[auth]`/`[email]` extras, `AsyncDatabaseManager`, `EmailUtils`, `UserAuthService`, `make_auth_router` and `UserTokenModel`."
+---
+
 # Minimum setup and `UserTokenModel`
 
 Use to wire the flow: extras, the four objects (`AsyncDatabaseManager`, `EmailUtils`, `UserAuthService`, `make_auth_router`) and the concrete `UserTokenModel`.

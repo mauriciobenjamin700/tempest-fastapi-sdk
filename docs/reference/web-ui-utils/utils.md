@@ -1,3 +1,7 @@
+---
+description: "Utilitários: validação BR, senha, HTTP client, retry, upload, datas e formatação."
+---
+
 # `tempest_fastapi_sdk.utils`
 
 Utilitários: validação BR, senha, HTTP client, retry, upload, datas e formatação.

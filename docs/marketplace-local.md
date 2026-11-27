@@ -1,3 +1,7 @@
+---
+description: "Use para ver um marketplace de bairro com os módulos novos: vendedores próximos por geo, chat em tempo real, avaliação em estrelas e notificações ao vivo."
+---
+
 # Exemplo integrado — marketplace de bairro
 
 O [checkout com Pix](integrated.md) junta os blocos de pagamento. Aqui

@@ -1,3 +1,7 @@
+---
+description: "Use para declarar tabelas com `BaseModel`: colunas grátis, nomes de tabela centralizados, convenção de nomes de constraints, unique composta e `get_table_name()`."
+---
+
 # 1. O modelo base
 
 Use para declarar tabelas com `BaseModel`: nomes de tabela centralizados, convenção de nomes de constraints e os helpers que vêm de graça.

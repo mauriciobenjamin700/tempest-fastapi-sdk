@@ -1,3 +1,7 @@
+---
+description: "Use para declarar campos de schema já validados (tipos `*Field` para inteiro, float, decimal, string, locale e chave Pix) e compor os seus."
+---
+
 # Campos validados (tipos prontos)
 
 Em vez de repetir `Field(gt=0, ...)` em cada schema, o SDK traz tipos

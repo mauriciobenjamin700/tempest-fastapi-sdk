@@ -1,3 +1,7 @@
+---
+description: "Use to set up JSON logs carrying the request ID; covers `configure_logging`, per-level files, rotation, data redaction, `make_logs_router` and `AccessLogMiddleware`."
+---
+
 # Logging
 
 In this recipe you set up structured JSON logs with per-request correlation, one file per severity level, and an HTTP endpoint to read them back. The goal is that every log line is parseable, traceable to the request that produced it, and inspectable without SSHing into the server.

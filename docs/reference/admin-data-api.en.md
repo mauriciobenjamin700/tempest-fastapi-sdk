@@ -1,3 +1,7 @@
+---
+description: "Index of the admin, data and API modules: admin panel, models, repository, session, migrations, FastAPI wiring, auth, authz, sessions, exceptions, base schemas and settings."
+---
+
 # API Reference: Admin, data and API
 
 The API reference is generated from the SDK's English docstrings via

@@ -1,3 +1,7 @@
+---
+description: "Modelops: exportar, quantizar e medir os modelos que o serviço serve."
+---
+
 # `tempest_fastapi_sdk.modelops`
 
 Modelops: exportar, quantizar e medir os modelos que o serviço serve.

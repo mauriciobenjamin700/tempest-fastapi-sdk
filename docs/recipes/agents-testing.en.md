@@ -1,3 +1,7 @@
+---
+description: "Use to test an agent without relying on the model: minimal test, error recovery, budget, skills, memory, backend outage and when to use the real model."
+---
+
 # Testing and validating an agent
 
 An agent's behaviour depends on what the model decides, which makes it feel

@@ -1,3 +1,7 @@
+---
+description: "Bundled auth flow — signup, activation, password reset."
+---
+
 # API Reference: `tempest_fastapi_sdk.auth`
 
 Bundled auth flow — signup, activation, password reset.

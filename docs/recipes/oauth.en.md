@@ -1,3 +1,7 @@
+---
+description: "Use for social login with Google, GitHub or OIDC that issues your own session; covers `make_auth_router`, the token-in-hand flow, email linking, linked accounts and `OIDCProvider`."
+---
+
 # Social login (OAuth2 / OIDC)
 
 "Sign in with Google" has four parts: send the user to the provider, take the

@@ -1,3 +1,7 @@
+---
+description: "Reviews module — comments and 0-to-5-star ratings on any target."
+---
+
 # API Reference: `tempest_fastapi_sdk.reviews`
 
 Reviews module — comments and 0-to-5-star ratings on any target.

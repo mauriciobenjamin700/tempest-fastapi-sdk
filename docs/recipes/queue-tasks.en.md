@@ -1,3 +1,7 @@
+---
+description: "Index of queues and background tasks over FastStream and TaskIQ; covers when to use `MessageBroker`, `TaskQueue`, scheduling or outbox and the subpage table."
+---
+
 # Queues and Tasks
 
 Background work without the pain. The SDK wraps **FastStream** (messaging) and **TaskIQ** (tasks + scheduling) in typed classes with a single vocabulary — the common path (publish, consume, enqueue, schedule) imports neither `faststream` nor `taskiq` in application code. The exception is a transport-specific option, such as the `RabbitExchange` passed as `exchange=` further down.

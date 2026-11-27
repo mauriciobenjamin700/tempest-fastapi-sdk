@@ -1,3 +1,7 @@
+---
+description: "Index of the documents and files modules: PDF, spreadsheets, slides, object storage and upload, data export and erasure (LGPD), artifact registry and share preview."
+---
+
 # API Reference: Documents and files
 
 The API reference is generated from the SDK's English docstrings via

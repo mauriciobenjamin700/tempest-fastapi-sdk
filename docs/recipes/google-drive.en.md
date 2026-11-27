@@ -1,3 +1,7 @@
+---
+description: "Use to store uploads in a Google Drive folder or Shared Drive via a service account with `GoogleDriveUploadStorage`, from Cloud Console setup to errors."
+---
+
 # Google Drive (uploads)
 
 Your service receives files — contracts, receipts, photos — and the company

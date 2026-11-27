@@ -1,3 +1,7 @@
+---
+description: "Data-subject export and erasure (LGPD art. 18, GDPR art. 15/17)."
+---
+
 # API Reference: `tempest_fastapi_sdk.privacy`
 
 Data-subject export and erasure (LGPD art. 18, GDPR art. 15/17).

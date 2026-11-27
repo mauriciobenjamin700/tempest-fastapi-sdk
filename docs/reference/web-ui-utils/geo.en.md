@@ -1,3 +1,7 @@
+---
+description: "Geolocation — distance, routing, geometry and geocoding, no paid API."
+---
+
 # API Reference: `tempest_fastapi_sdk.geo`
 
 Geolocation — distance, routing, geometry and geocoding, no paid API.

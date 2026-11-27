@@ -1,3 +1,7 @@
+---
+description: "Entry point of the SDK: what you get out of the box, a five-minute quick start, where to go next and project status."
+---
+
 # tempest-fastapi-sdk
 
 > Shared FastAPI / SQLAlchemy / Pydantic building blocks used across every Tempest backend service. **Start every project with the same opinionated foundation already in place.**

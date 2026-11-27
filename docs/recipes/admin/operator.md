@@ -1,3 +1,7 @@
+---
+description: "Use para mostrar datas no fuso do operador, travar edição simultânea com lock otimista e trocar a interface do admin para português."
+---
+
 # Fuso, edição simultânea e idioma
 
 Use para mostrar datas no fuso do operador, evitar que duas edições se sobrescrevam e trocar a interface para português.

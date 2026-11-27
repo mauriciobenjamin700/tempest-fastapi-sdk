@@ -1,3 +1,7 @@
+---
+description: "Use to make POST retries safe with `Idempotency-Key`; covers `IdempotencyMiddleware`, per-caller scoping, in-memory and Redis setups, the client and a custom backend."
+---
+
 # Idempotency
 
 `IdempotencyMiddleware` implements the `Idempotency-Key` pattern used by Stripe, AWS, GitHub and Plaid: the client sends a unique header and, **once the first request completes**, the server replays the same response on any retry — no duplicate row in the database, no double charge.

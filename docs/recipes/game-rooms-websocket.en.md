@@ -1,3 +1,7 @@
+---
+description: "Use to build a WebSocket multiplayer game room server with `tempest_fastapi_sdk.rooms`; covers the protocol, lockstep, host authority, reconnection and latency."
+---
+
 # Online game rooms (WebSocket)
 
 An online multiplayer game needs a meeting point on the internet: players

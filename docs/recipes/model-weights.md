@@ -1,3 +1,7 @@
+---
+description: "Use para controlar o ciclo dos pesos no HuggingFace Hub; contém cache, fixar revisão, baixar antes de servir, checagem de disco, modo offline, limpar cache e `ModelRef`."
+---
+
 # Pesos de modelos (ciclo no Hub)
 
 Carregar um modelo pelo id é a metade fácil. A outra metade é tudo o que a

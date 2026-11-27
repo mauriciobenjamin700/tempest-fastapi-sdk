@@ -1,3 +1,7 @@
+---
+description: "Use para implementar os fluxos críticos do marketplace: diagramas de sequência de signup, convite, checkout idempotente, SSE + Web Push e máquinas de estado."
+---
+
 # Fluxos críticos
 
 Diagramas de sequência para os fluxos que **mais erram na primeira implementação** — incluindo a mensageria em tempo real (SSE + Web Push) — junto com as máquinas de estado de `Order` e `Invitation`. Cada fluxo aponta os primitivos do SDK envolvidos.

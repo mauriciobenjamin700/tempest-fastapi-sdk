@@ -1,3 +1,7 @@
+---
+description: "Use to receive WhatsApp messages and status updates from the zap-api gateway; covers the ready route with `401`, enum dispatch, the service layer with `ZapInbox` and tests without the gateway."
+---
+
 # Receiving WhatsApp messages (zap-api)
 
 The [WhatsApp (zap-api)](zap.md) recipe covers the **outbound** side:

@@ -1,3 +1,7 @@
+---
+description: "Busca aproximada de texto sem modelo: normalização, distância de edição e lookup fuzzy."
+---
+
 # `tempest_fastapi_sdk.text`
 
 Busca aproximada de texto sem modelo: normalização, distância de edição e lookup fuzzy.

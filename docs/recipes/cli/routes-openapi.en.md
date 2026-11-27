@@ -1,3 +1,7 @@
+---
+description: "Use to list routes, bundle a route for an AI (`tempest bundle-route`), document errors in OpenAPI and audit permission guards."
+---
+
 # Routes, OpenAPI errors and permissions
 
 Use to list routes, bundle a route for an AI, document errors in OpenAPI and audit permission guards.

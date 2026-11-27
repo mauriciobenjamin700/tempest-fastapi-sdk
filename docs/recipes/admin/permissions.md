@@ -1,3 +1,7 @@
+---
+description: "Use para controlar quem vê e faz o quê no admin: `access_policy` por model e ação, `row_scope` na leitura e na escrita e `impersonate`."
+---
+
 # Permissões: RBAC, escopo por linha e impersonate
 
 Use para controlar quem vê e faz o quê: RBAC por model e ação, escopo por linha na leitura e na escrita e entrar como outro usuário.

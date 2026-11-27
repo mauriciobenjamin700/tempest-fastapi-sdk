@@ -1,3 +1,7 @@
+---
+description: "Use para receber webhooks do RevenueCat de assinatura in-app; contém autenticação por header e HMAC, inbox idempotente, `normalize` para estado e reconciliação pela API."
+---
+
 # RevenueCat (assinatura in-app)
 
 App Flutter (ou nativo) que vende assinatura pela App Store e pelo Google Play

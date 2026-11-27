@@ -1,3 +1,7 @@
+---
+description: "Os provedores traduzidos para o contrato canônico de pagamento."
+---
+
 # `tempest_fastapi_sdk.integrations.payment.adapters`
 
 Os provedores traduzidos para o contrato canônico de pagamento.

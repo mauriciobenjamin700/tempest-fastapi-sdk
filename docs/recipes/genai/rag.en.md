@@ -1,3 +1,7 @@
+---
+description: "Use to inject context into the LLM: web search (SearXNG), page-body extraction, PDF reading and RAG over your own corpus."
+---
+
 # RAG context
 
 Use to inject context into the LLM: web search (SearXNG), page-body extraction, PDF reading and RAG over your own corpus.

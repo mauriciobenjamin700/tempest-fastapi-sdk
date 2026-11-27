@@ -1,3 +1,7 @@
+---
+description: "Google Drive: upload files into a shared folder as an `UploadUtils` backend."
+---
+
 # API Reference: `tempest_fastapi_sdk.integrations.storage.google_drive`
 
 Google Drive: upload files into a shared folder as an `UploadUtils` backend.

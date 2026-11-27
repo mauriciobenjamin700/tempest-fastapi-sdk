@@ -1,3 +1,7 @@
+---
+description: "Use em produção: moderar conteúdo, contabilizar uso por usuário, expor métricas e tracing, contar tokens e cachear gerações."
+---
+
 # Moderação, uso, métricas e cache
 
 Use em produção: moderar conteúdo, contabilizar uso por usuário, expor métricas e tracing, contar tokens e cachear gerações.

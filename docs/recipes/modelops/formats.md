@@ -1,3 +1,7 @@
+---
+description: "Use para fundir detector e classificador num `.onnx`, converter para `.ort`, otimizar o grafo e inspecionar sem executar; contém o relatório via API e a CLI."
+---
+
 # Fundir, `.ort`, inspecionar, API e CLI
 
 Use para fundir detector e classificador, converter `.onnx` em `.ort`, inspecionar sem executar e expor o relatório numa API ou pela CLI.

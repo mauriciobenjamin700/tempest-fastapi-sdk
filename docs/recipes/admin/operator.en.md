@@ -1,3 +1,7 @@
+---
+description: "Use to show dates in the operator time zone, block concurrent edits with optimistic locking and switch the admin UI to Portuguese."
+---
+
 # Timezone, concurrent edits and language
 
 Use to show dates in the operator's timezone, stop two edits from overwriting each other and switch the interface to Portuguese.

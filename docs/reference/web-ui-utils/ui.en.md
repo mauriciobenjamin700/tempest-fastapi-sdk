@@ -1,3 +1,7 @@
+---
+description: "The UI layer: typed pages, components, forms and CSS — all in Python."
+---
+
 # API Reference: `tempest_fastapi_sdk.ui`
 
 The UI layer: typed pages, components, forms and CSS — all in Python.

@@ -1,3 +1,7 @@
+---
+description: "Use quando o serviço grava e serve o mesmo arquivo: `FileStoreUtils` une upload, download e URL presigned sobre disco local ou MinIO/S3."
+---
+
 # File store unificado — `FileStoreUtils`
 
 Guardar um arquivo, servir de volta e assinar uma URL temporária normalmente

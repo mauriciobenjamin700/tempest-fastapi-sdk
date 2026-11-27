@@ -1,3 +1,7 @@
+---
+description: "Use para organizar o system prompt dos agentes: pasta `prompts/`, anatomia, o que o SDK já injeta, prompt por requisição, o que evitar e como testar."
+---
+
 # Agentes de IA (prompts)
 
 O system prompt é o único texto que o modelo lê em **toda** volta do laço, e é

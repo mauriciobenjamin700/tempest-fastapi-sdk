@@ -1,3 +1,7 @@
+---
+description: "Use to detect model drift in production without labels; covers the three signals, a training baseline, PSI, constant memory and exposure over HTTP and Prometheus."
+---
+
 # Know whether the model still works
 
 Use to monitor drift in production: three signals, a training baseline, PSI, constant memory, HTTP and Prometheus.

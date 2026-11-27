@@ -1,3 +1,7 @@
+---
+description: "PDF generation from HTML templates."
+---
+
 # API Reference: `tempest_fastapi_sdk.pdf`
 
 PDF generation from HTML templates.

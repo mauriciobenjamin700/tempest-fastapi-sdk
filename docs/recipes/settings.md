@@ -1,3 +1,7 @@
+---
+description: "Use para montar a classe `Settings` do serviço com os mixins do SDK; contém ordem das bases, `BaseAppSettings` por último, `*_kwargs()` para clientes e tabela de variáveis por mixin."
+---
+
 # Settings: compor os mixins de configuração
 
 Use esta página para montar a classe `Settings` do serviço: qual mixin traz

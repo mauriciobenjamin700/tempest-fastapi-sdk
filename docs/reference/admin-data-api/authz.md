@@ -1,3 +1,7 @@
+---
+description: "Autorização por objeto: políticas, checagem de permissão e a dependência do FastAPI."
+---
+
 # `tempest_fastapi_sdk.authz`
 
 Autorização por objeto: políticas, checagem de permissão e a dependência do FastAPI.
