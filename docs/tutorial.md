@@ -230,7 +230,7 @@ def run() -> None:
 __all__: list[str] = ["app", "run"]
 ```
 
-`run_server` lê `SERVER_HOST` / `SERVER_PORT` / `SERVER_RELOAD` de `settings` (caindo para `127.0.0.1` / `8000` / `False`) e encaminha quaisquer kwargs extras (`workers=`, `log_config=`, `ssl_*=`) literalmente para `uvicorn.run`. Veja a [receita de ponto de entrada programático do servidor](recipes/http.md#ponto-de-entrada-programatico-do-servidor).
+`run_server` lê `SERVER_HOST` / `SERVER_PORT` / `SERVER_RELOAD` de `settings` (caindo para `127.0.0.1` / `8000` / `False`) e encaminha quaisquer kwargs extras (`workers=`, `log_config=`, `ssl_*=`) literalmente para `uvicorn.run`. Veja a [receita de ponto de entrada programático do servidor](recipes/http/extras.md#ponto-de-entrada-programatico-do-servidor).
 
 ```python
 # src/__init__.py
