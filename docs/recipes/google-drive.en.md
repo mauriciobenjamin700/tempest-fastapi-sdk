@@ -18,45 +18,129 @@ already in the base package). There is no `google-api-python-client` and no
 `google-auth`: a service account's token exchange is one signed JWT and one
 POST, and the SDK does it itself.
 
-## Step 1 — Create the service account and enable the Drive API
+## Step 1 — Get the service account and its JSON key
 
-In the [Google Cloud console](https://console.cloud.google.com/):
+You leave this step with a JSON file — the service account's credential. You
+can do it in the console (clicking) or with `gcloud` (copying commands); pick
+one.
 
-1. Pick (or create) a project.
-2. Under **APIs & Services → Library**, enable the **Google Drive API**.
-3. Under **IAM & Admin → Service accounts**, create a service account.
-4. On that account, **Keys → Add key → JSON**. The browser downloads a file
-   like this (values shortened):
+!!! tip "Menu names change"
+    The Google Cloud console renames and reorganizes menus from time to
+    time. If a name below does not match the screen, follow the official
+    guides: [Create service accounts](https://cloud.google.com/iam/docs/service-accounts-create)
+    and [Create and delete service account keys](https://cloud.google.com/iam/docs/keys-create-delete).
+
+### 1.1 — A Google Cloud project
+
+The service account lives inside a Google Cloud project. Sign in to the
+[console](https://console.cloud.google.com/) with the company's Google account
+and, in the project picker at the top of the page, choose an existing project
+or click **New project**. Write down the **project ID** (e.g.
+`my-company-uploads`).
+
+### 1.2 — Enable the Google Drive API
+
+Without it, every call to the Drive API is refused. Under **APIs & Services →
+Library**, search for **Google Drive API** and click **Enable**.
+
+### 1.3 — Create the service account
+
+Under **IAM & Admin → Service accounts**, click **Create service account**:
+
+1. Give it a name (e.g. `uploader`). The console suggests the **ID** and
+   shows the e-mail the account will have:
+   `uploader@my-company-uploads.iam.gserviceaccount.com`.
+2. At the roles step, **grant none** and finish. The account needs no IAM
+   role on the project to use Drive: access to files comes from **sharing**
+   the folder (Step 2), not from IAM.
+
+### 1.4 — Generate the JSON key
+
+Open the account, go to the **Keys → Add key → Create new key** tab, choose
+**JSON** and confirm. The browser downloads a file like this (values
+shortened):
 
 ```json
 {
   "type": "service_account",
-  "project_id": "my-company",
+  "project_id": "my-company-uploads",
   "private_key_id": "3f2a…",
   "private_key": "-----BEGIN PRIVATE KEY-----\n…\n-----END PRIVATE KEY-----\n",
-  "client_email": "uploader@my-company.iam.gserviceaccount.com",
+  "client_email": "uploader@my-company-uploads.iam.gserviceaccount.com",
   "token_uri": "https://oauth2.googleapis.com/token"
 }
 ```
 
+The two things the recipe uses are the `client_email` (you need it in Step 2)
+and the whole file (it goes into the settings in Step 3).
+
+!!! warning "Key creation blocked by the organization"
+    If creating the key fails with an organization-policy message, your
+    Google Cloud organization blocks service-account keys (the
+    `iam.disableServiceAccountKeyCreation` constraint). Whoever administers
+    the organization can grant an exception for this project; there is no
+    way around it on the SDK side, which authenticates precisely with the
+    key.
+
+=== "With gcloud"
+
+    The whole step, for those with the [gcloud CLI](https://cloud.google.com/sdk/docs/install)
+    installed and signed in (`gcloud auth login`):
+
+    ```bash
+    gcloud projects create my-company-uploads
+    gcloud config set project my-company-uploads
+    gcloud services enable drive.googleapis.com
+    gcloud iam service-accounts create uploader --display-name="Service uploads"
+    gcloud iam service-accounts keys create drive-sa.json \
+        --iam-account=uploader@my-company-uploads.iam.gserviceaccount.com
+    ```
+
+    The last command writes the key to `drive-sa.json` in the current
+    directory.
+
 !!! warning "That file is a password"
     Whoever holds the JSON acts as the service account. Keep it in your
-    deployment's secret manager, never in the repository. The SDK never
-    writes the key, the signed JWT or the access token to a log or an error
-    message, and the credentials' `repr` hides the private key.
+    deployment's secret manager, never in the repository — if it sits in the
+    project folder during development, add its name to `.gitignore`. If it
+    leaks, delete the key in the account's **Keys** tab and generate a new
+    one. The SDK never writes the key, the signed JWT or the access token to
+    a log or an error message, and the credentials' `repr` hides the private
+    key.
 
 ## Step 2 — Share the folder with the `client_email`
 
-The service account only sees what is shared with it. Take the
-`client_email` from the JSON and:
+The service account is an account like any other in Drive: it only sees what
+is shared with it. Take the `client_email` from the JSON and choose where the
+files will live.
 
-- **Shared Drive (recommended):** add the account as a member of the Shared
-  Drive, with the **Content manager** role (or higher — `delete` removes
-  files).
-- **Regular folder:** share the folder with the account as **Editor**.
+### Shared Drive (recommended)
 
-The **folder id** is the last segment of its URL:
-`https://drive.google.com/drive/folders/`**`1AbCdEfGhIjKlMnOp`**.
+Shared Drives exist on **Google Workspace** accounts; a personal Gmail account
+has none. In [Google Drive](https://drive.google.com/):
+
+1. Under **Shared drives**, create one (or open an existing one).
+2. Click the drive name → **Manage members**, paste the `client_email` and
+   give it the **Content manager** role (or higher — the backend's `delete`
+   removes files, and roles below that cannot).
+3. Optional: create a folder inside the drive for the uploads.
+
+### Regular folder (My Drive)
+
+Right-click the folder → **Share**, paste the `client_email` and give it the
+**Editor** role. Read the "Why a Shared Drive" note below before choosing
+this path.
+
+### The IDs that go into the settings
+
+Open the folder in the browser. The **folder id** is the last segment of the
+URL: `https://drive.google.com/drive/folders/`**`1AbCdEfGhIjKlMnOp`** — that is
+`GOOGLE_DRIVE_FOLDER_ID`.
+
+If the folder is in a Shared Drive, open the drive's **root**: the last
+segment of its URL is the drive id (`GOOGLE_DRIVE_DRIVE_ID`, optional — it
+restricts searches to that drive). If you write straight into the Shared
+Drive's root, the same value is also the folder id.
 
 !!! info "Why a Shared Drive"
     A file the service account uploads into a person's **My Drive** folder
@@ -68,6 +152,62 @@ The **folder id** is the last segment of its URL:
     [Shared drives overview](https://developers.google.com/workspace/drive/api/guides/about-shareddrives)
     before deciding. Every SDK call to the Drive API sends
     `supportsAllDrives=true`, so both shapes work on the client side.
+
+### Check before wiring the service
+
+A one-minute script proves the key and the sharing are right: it writes a
+test file into the folder and deletes it.
+
+```python title="check_drive.py"
+import asyncio
+from collections.abc import AsyncIterator
+
+from tempest_fastapi_sdk.integrations.storage.google_drive import (
+    GoogleDriveUploadStorage,
+)
+from tempest_fastapi_sdk.utils import UploadResult
+
+PROBE_KEY: str = "tempest-credentials-check.txt"
+
+
+async def probe_bytes() -> AsyncIterator[bytes]:
+    """Yield the tiny payload of the check file."""
+    yield b"tempest credentials check"
+
+
+async def main() -> None:
+    """Upload and delete a probe file to prove the key and the sharing."""
+    storage: GoogleDriveUploadStorage = GoogleDriveUploadStorage.from_service_account(
+        folder_id="1AbCdEfGhIjKlMnOp",
+        credentials_path="drive-sa.json",
+    )
+    try:
+        result: UploadResult = await storage.write_stream(
+            PROBE_KEY, probe_bytes(), content_type="text/plain"
+        )
+        print("upload ok:", result.url)
+        print("deleted:", await storage.delete(PROBE_KEY))
+    finally:
+        await storage.aclose()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+On success it prints the file link and `deleted: True`. On failure the
+exception says what is missing:
+
+| Exception | What it means | What to do |
+| --- | --- | --- |
+| `GoogleDriveException` with `reason` `invalid_private_key` | the JSON's `private_key` is not a valid PEM RSA key (file edited, truncated or pasted with the wrong line breaks) | download the key again (Step 1.4) |
+| `GoogleDriveFolderNotFoundException` | Drive answered `404` for the folder: wrong id, or the folder is not shared with the `client_email` (the message names the e-mail) | check the id in the URL and the sharing (Step 2) |
+| `GoogleDriveException` with another `reason` | Drive refused the call for another reason (API not enabled, role without permission, quota) — `details` carries the `status` and `reason` Google sent | read the `reason` and go back to the matching step |
+
+The exceptions and the mapping are the SDK's and are covered by the test
+suite; **which** status Google returns in each case (for instance `404` for
+an unshared folder) is what the [error-handling guide](https://developers.google.com/workspace/drive/api/guides/handle-errors)
+describes, and was not measured against Google in this repository.
 
 ## Step 3 — Configure the settings
 
