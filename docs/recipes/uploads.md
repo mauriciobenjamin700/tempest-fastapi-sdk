@@ -1,18 +1,13 @@
 # Uploads — disco local + S3 / MinIO
 
-`UploadUtils` escolhe o backend **uma vez no construtor**: passe uma **pasta**
-para gravar em disco local, ou um **`AsyncMinIOClient`** para gravar num
-bucket S3/MinIO. O resto do código de upload é idêntico nos dois casos.
-Requer o extra `[upload]` (e `[minio]` quando usar MinIO).
-
-!!! warning "Mudança em v0.41.0 (breaking)"
-    O backend agora vem no construtor — o antigo `save(file, storage=...)`
-    por chamada **foi removido**. `save()` devolve a **key** de storage
-    (relativa), e `delete()` virou **async**. Veja a migração no fim.
+`UploadUtils` valida e grava o `UploadFile` do FastAPI. O backend é escolhido
+**uma vez, no construtor**: uma **pasta** grava em disco local, um
+**`AsyncMinIOClient`** grava num bucket S3/MinIO, e o resto do código não muda.
+Requer o extra `[upload]` (e `[minio]` para MinIO).
 
 !!! tip "Validação fica no `UploadUtils`"
-    Tamanho, extensão, MIME, magic bytes e `content_validator` são validados
-    no `UploadUtils` antes de qualquer byte ir pro backend — o storage só
+    Extensão, MIME, tamanho, magic bytes e `content_validator` rodam no
+    `UploadUtils` antes de qualquer byte chegar ao backend — o storage só
     recebe dados já validados.
 
 !!! info "Google Drive"
@@ -20,7 +15,167 @@ Requer o extra `[upload]` (e `[minio]` quando usar MinIO).
     `GoogleDriveUploadStorage` em `backend=` — veja a receita
     [Google Drive (uploads)](google-drive.md).
 
-## Disco local
+Quer ver o upload dentro de um serviço inteiro (settings, migrations, auth,
+teste)? Veja [Serviço completo](full-service.md).
+
+## Referência rápida
+
+Use quando precisa da assinatura exata, do retorno ou do status HTTP de cada
+recusa.
+
+### Construtor `UploadUtils(...)`
+
+```text
+UploadUtils(
+    source: str | Path | AsyncMinIOClient | None = None,
+    *,
+    backend: UploadStorage | None = None,
+    max_size_bytes: int | None = None,
+    allowed_extensions: set[str] | None = None,
+    allowed_mimetypes: set[str] | None = None,
+    verify_magic_bytes: bool = False,
+    require_known_signature: bool = True,
+    chunk_size: int = 1024 * 1024,
+)
+```
+
+| Parâmetro | O que faz |
+| --- | --- |
+| `source` | Pasta (disco local, criada se faltar) ou `AsyncMinIOClient` (bucket). `None` só com `backend=` |
+| `backend` | Backend pronto (`GoogleDriveUploadStorage`, um `UploadStorage` seu); ignora a seleção por `source` |
+| `max_size_bytes` | Teto do arquivo, conferido enquanto o stream é lido. `None` ou `0` desliga |
+| `allowed_extensions` | Allowlist de extensão. Ponto e caixa normalizados (`{"PNG", ".jpg"}` funciona). `None` ou `set()` desliga |
+| `allowed_mimetypes` | Allowlist do `Content-Type` declarado (sem diferenciar caixa). `None` ou `set()` desliga |
+| `verify_magic_bytes` | Confere os primeiros bytes (`sniff_mime`) contra o tipo declarado / a allowlist |
+| `require_known_signature` | Com `verify_magic_bytes`, recusa assinatura desconhecida (`True`) ou só a contradição (`False`) |
+| `chunk_size` | Tamanho de cada leitura do stream, em bytes (default 1 MiB) |
+
+Sem o extra `[upload]`, `UploadUtils("pasta")` levanta `ImportError`; sem
+`source` nem `backend`, `ValueError`.
+
+### `save(...)` e os outros métodos
+
+```text
+await uploads.save(
+    file: UploadFile,
+    *,
+    subdir: str = "",
+    filename: str | None = None,
+    keep_original_name: bool = False,
+    content_validator: Callable[[bytes], bool] | None = None,
+    hasher: Any | None = None,
+) -> Path
+```
+
+| Parâmetro | O que faz |
+| --- | --- |
+| `subdir` | Subpasta local ou prefixo de key no MinIO (`"avatars"`, `str(user.id)`) |
+| `filename` | Nome final fixo (`f"{user_id}.jpg"`); reduzido ao basename, protegido contra path traversal |
+| `keep_original_name` | Mantém o nome enviado; sem ele (e sem `filename`) o nome é um UUID com a extensão original |
+| `content_validator` | Predicado sobre o **primeiro chunk**; `False` recusa e remove o parcial |
+| `hasher` | Objeto `hashlib` alimentado com **todos** os chunks — leia `hasher.hexdigest()` depois do `save` |
+
+**Retorno:** `Path` com a **key relativa** ao backend
+(`Path("<subdir>/<uuid>.png")`), não um caminho absoluto. Guarde `str(key)` no
+banco e leia de volta com o [`DownloadUtils`](downloads.md).
+
+| Método | Retorno | Uso |
+| --- | --- | --- |
+| `await save(file, ...)` | `Path` (key) | valida e grava |
+| `await replace(old_key, file, ...)` | `Path` (key nova) | grava a nova e só então apaga a antiga |
+| `await delete(key)` | `bool` | `True` se apagou, `False` se a key não existia |
+| `validate(file)` | `None` | só extensão e MIME, sem ler o stream |
+
+### Exceções e status HTTP
+
+Cada recusa é uma `AppException`; com `register_exception_handlers(app)` ela
+vira o status e o envelope `{"detail", "code", "details"}` abaixo.
+
+| Recusa | Exceção | Status | `code` | `details` |
+| --- | --- | --- | --- | --- |
+| Extensão fora de `allowed_extensions` | `InvalidFileTypeException` | `415` | `INVALID_FILE_TYPE` | `{"extension": "zip", "allowed": [...]}` |
+| MIME fora de `allowed_mimetypes` | `InvalidFileTypeException` | `415` | `INVALID_FILE_TYPE` | `{"mimetype": "...", "allowed": [...]}` |
+| Bytes não batem com o tipo (`verify_magic_bytes`) | `InvalidFileTypeException` | `415` | `INVALID_FILE_TYPE` | `{"reason": "...", "declared": "...", ...}` |
+| `content_validator` devolveu `False` | `InvalidFileTypeException` | `415` | `INVALID_FILE_TYPE` | `{"reason": "content_validator rejected the upload bytes"}` |
+| Passou de `max_size_bytes` | `FileTooLargeException` | `413` | `FILE_TOO_LARGE` | `{"max_size_bytes": 1024}` |
+
+??? example "Os status acima saíram deste programa, que dispara cada recusa"
+
+    ```python
+    import tempfile
+    from pathlib import Path
+
+    from fastapi import FastAPI, UploadFile
+    from fastapi.testclient import TestClient
+
+    from tempest_fastapi_sdk import UploadUtils, register_exception_handlers
+
+    upload_dir: Path = Path(tempfile.mkdtemp())
+    uploads: UploadUtils = UploadUtils(
+        upload_dir,
+        max_size_bytes=1024,
+        allowed_extensions={".png", ".txt"},
+        allowed_mimetypes={"image/png", "text/plain"},
+        verify_magic_bytes=True,
+        require_known_signature=False,
+    )
+    app: FastAPI = FastAPI()
+    register_exception_handlers(app)
+
+
+    @app.post("/files")
+    async def upload_file(file: UploadFile) -> dict[str, str]:
+        """Recusa texto que começa com `nope`; o resto passa pelas allowlists.
+
+        Args:
+            file (UploadFile): O arquivo do formulário multipart.
+
+        Returns:
+            dict[str, str]: A key gravada.
+        """
+        key = await uploads.save(
+            file,
+            content_validator=lambda head: not head.startswith(b"nope"),
+        )
+        return {"key": str(key)}
+
+
+    client: TestClient = TestClient(app)
+    png: bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+    cases: list[tuple[str, str, bytes, str]] = [
+        ("aceito", "foto.png", png, "image/png"),
+        ("extensao", "pacote.zip", b"PK", "application/zip"),
+        ("mime", "foto.png", png, "application/zip"),
+        ("tamanho", "notas.txt", b"x" * 2048, "text/plain"),
+        ("content_validator", "notas.txt", b"nope", "text/plain"),
+        ("magic bytes", "falso.png", b"<html></html>", "image/png"),
+    ]
+    for label, name, data, mime in cases:
+        response = client.post("/files", files={"file": (name, data, mime)})
+        body: dict[str, object] = response.json()
+        print(f"{label}: {response.status_code} {body.get('code', '')}")
+    print("arquivos gravados:", len(list(upload_dir.iterdir())))
+    ```
+
+Saída:
+
+```text
+aceito: 200
+extensao: 415 INVALID_FILE_TYPE
+mime: 415 INVALID_FILE_TYPE
+tamanho: 413 FILE_TOO_LARGE
+content_validator: 415 INVALID_FILE_TYPE
+magic bytes: 415 INVALID_FILE_TYPE
+arquivos gravados: 1
+```
+
+Só o arquivo aceito fica na pasta: o recusado por tamanho ou conteúdo é
+removido antes da exceção. Extensão e MIME são recusados **antes de ler**
+qualquer byte.
+
+## Fazer upload para disco local
+
+Passe uma pasta no construtor.
 
 ```python
 from fastapi import APIRouter, UploadFile
@@ -38,41 +193,11 @@ async def upload(file: UploadFile) -> dict[str, str]:
     return {"key": str(key)}
 ```
 
-## MinIO / S3
-
-Passe o `AsyncMinIOClient` direto — nada mais muda:
-
-```python
-import asyncio
-
-from fastapi import UploadFile
-
-from tempest_fastapi_sdk import AsyncMinIOClient, UploadUtils
-
-from src.core.settings import settings
-
-file: UploadFile = ...  # comes from the endpoint signature
-
-
-minio = AsyncMinIOClient(**settings.storage_kwargs())
-uploads = UploadUtils(minio, max_size_bytes=10 * 1024 * 1024)
-
-
-async def main() -> None:
-    """Run this example."""
-    # idêntico ao caso local:
-    key = await uploads.save(file, filename="logo.png")   # grava no bucket
-
-
-asyncio.run(main())
-```
-
 !!! tip "Centralize em `resources.py`"
-    Construa o `uploads` (e o `minio`) uma vez em
+    Construa o `uploads` uma vez em
     [`src/api/dependencies/resources.py`](../architecture.md) e injete via
-    `Depends(get_uploads)`, em vez de instanciar por request. O `get_uploads`
-    é glue do seu projeto (não vem do SDK) — um provider que devolve a
-    instância única:
+    `Depends(get_uploads)`. O `get_uploads` é glue do seu projeto (não vem do
+    SDK):
 
     ```python
     # src/api/dependencies/resources.py
@@ -86,64 +211,128 @@ asyncio.run(main())
         return uploads
     ```
 
-## Restringir extensões (allowlist)
+## Fazer upload para MinIO / S3
 
-Passe `allowed_extensions` no construtor com o conjunto de extensões que
-você aceita. Tudo fora da lista é rejeitado com **HTTP 415**
-(`InvalidFileTypeException`) **antes de qualquer byte ser lido** — então um
-`.zip` malicioso nunca chega ao backend nem ocupa memória:
+Passe o `AsyncMinIOClient` no lugar da pasta; a rota é a mesma.
 
 ```python
+from fastapi import APIRouter, UploadFile
+
+from tempest_fastapi_sdk import AsyncMinIOClient, UploadUtils
+
+from src.core.settings import settings
+
+router = APIRouter()
+minio = AsyncMinIOClient(**settings.storage_kwargs())
+uploads = UploadUtils(minio, max_size_bytes=10 * 1024 * 1024)
+
+
+@router.post("/logos")
+async def upload_logo(file: UploadFile) -> dict[str, str]:
+    """Grava no bucket com nome fixo; devolve a key S3."""
+    key = await uploads.save(file, filename="logo.png")
+    return {"key": str(key)}
+```
+
+## Upload só para usuário logado
+
+Peça o usuário com a dependency de `auth_service.current_user_dependency()`:
+sem token válido a rota responde `401` antes de ler o arquivo.
+
+```python
+# src/api/routers/files.py
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, UploadFile
+
 from tempest_fastapi_sdk import UploadUtils
 
-# Só modelos ONNX — qualquer outra extensão é bloqueada.
-uploads = UploadUtils(
-    "var/models",
-    allowed_extensions={".onnx", ".ort"},
-    max_size_bytes=200 * 1024 * 1024,
-)
+from src.api.dependencies import get_current_user, get_uploads
+from src.db import UserModel
+
+router: APIRouter = APIRouter(prefix="/api/files", tags=["files"])
+
+
+@router.post("", status_code=201)
+async def upload_file(
+    file: UploadFile,
+    current: Annotated[UserModel, Depends(get_current_user)],
+    uploads: Annotated[UploadUtils, Depends(get_uploads)],
+) -> dict[str, str]:
+    """Grava o arquivo na pasta do usuário dono do token.
+
+    Args:
+        file (UploadFile): O arquivo do formulário multipart.
+        current (UserModel): O usuário resolvido a partir do bearer token.
+        uploads (UploadUtils): O utilitário de upload do processo.
+
+    Returns:
+        dict[str, str]: A key relativa ao diretório de upload.
+    """
+    key = await uploads.save(file, subdir=str(current.id))
+    return {"key": str(key)}
 ```
+
+O `get_current_user` é construído uma vez, ao lado do `UserAuthService`:
+`get_current_user = auth_service.current_user_dependency()`. O
+[Serviço completo](full-service.md) traz o projeto inteiro em volta desta rota
+(settings, `resources.py`, migrations) e o teste que mediu as respostas:
+
+| Envio | Status | `code` |
+| --- | --- | --- |
+| Com bearer token, `.png` | `201` | — (`{"key": "<user_id>/<uuid>.png"}`) |
+| Sem token | `401` | `UNAUTHORIZED` |
+| Com token, `.zip` fora da allowlist | `415` | `INVALID_FILE_TYPE` |
+| Com token, acima de `max_size_bytes` | `413` | `FILE_TOO_LARGE` |
+
+- `subdir=str(current.id)` separa os arquivos por dono.
+- Modo `soft`, cookie e sessão compartilhada do `current_user_dependency()`:
+  [Auth flow](auth-flow.md#pegando-o-current_user-da-requisicao).
+
+## Restringir extensões (allowlist)
+
+Passe `allowed_extensions` com o que você aceita: o resto é `415` **antes de
+qualquer byte ser lido**, então um `.zip` nunca chega ao backend.
 
 ```python
 from fastapi import APIRouter, UploadFile
 
 from tempest_fastapi_sdk import UploadUtils
 
-uploads = UploadUtils(source="./uploads")
 router = APIRouter()
+uploads = UploadUtils(
+    "var/models",
+    allowed_extensions={".onnx", ".ort"},
+    max_size_bytes=200 * 1024 * 1024,
+)
 
 
 @router.post("/models")
 async def upload_model(file: UploadFile) -> dict[str, str]:
-    """Aceita só .onnx / .ort; um .zip levanta 415 aqui dentro do save()."""
-    key = await uploads.save(file)   # file.zip -> InvalidFileTypeException (415)
+    """Aceita só .onnx / .ort; um .zip levanta 415 dentro do save()."""
+    key = await uploads.save(file)
     return {"key": str(key)}
 ```
 
-!!! info "Ponto e case são normalizados"
-    `{".onnx", ".ort"}`, `{"onnx", "ort"}` e `{".ONNX"}` são equivalentes — o
-    `UploadUtils` tira o ponto inicial e baixa pra minúsculo. A extensão vem
-    de `Path(file.filename).suffix`, então `modelo.ONNX` passa e `pacote.zip`
-    não.
+- `{".onnx", ".ort"}`, `{"onnx", "ort"}` e `{".ONNX"}` são equivalentes. A
+  extensão vem de `Path(file.filename).suffix`, então `modelo.ONNX` passa e
+  `pacote.zip` não.
+- O nome do arquivo é do cliente: extensão não é o conteúdo. Para formatos com
+  assinatura conhecida (imagens, PDF), ligue `verify_magic_bytes=True` +
+  `allowed_mimetypes={...}` para casar os **bytes reais**.
 
-!!! warning "Extensão não é o conteúdo"
-    Conferir extensão impede o engano honesto e o `.zip` óbvio, mas o nome do
-    arquivo é controlado pelo cliente. Pra formatos com assinatura conhecida
-    (imagens, PDF) ligue `verify_magic_bytes=True` + `allowed_mimetypes={...}`
-    pra casar os **bytes reais** contra a allowlist. Formatos binários sem
-    assinatura no `sniff_mime` (como `.onnx` / `.ort`) não passam com
-    `verify_magic_bytes=True` sozinho: o default `require_known_signature=True`
-    recusa toda assinatura desconhecida. Duas saídas: manter
-    `verify_magic_bytes=False` (o default), ou ligar o sniff com
+!!! warning "Formato binário sem assinatura conhecida (`.onnx`, `.ort`)"
+    Com `verify_magic_bytes=True`, o default `require_known_signature=True`
+    recusa toda assinatura que o `sniff_mime` não reconhece. Duas saídas:
+    manter `verify_magic_bytes=False` (o default), ou usar
     `require_known_signature=False`, que só recusa a **contradição** — um
     `.onnx` enviado como `application/octet-stream` é gravado, o mesmo arquivo
-    declarado como `image/png` é recusado (415), porque `image/png` é um tipo
-    que o `sniff_mime` conhece e os bytes não carregam. Pra validar o
-    conteúdo de verdade, use um `content_validator=...` no `save()`.
+    declarado como `image/png` é recusado (`415`). Para validar o conteúdo de
+    verdade, use `content_validator=...` no `save()`.
 
 Os tipos que o `sniff_mime` reconhece pelos bytes estão em
-`SNIFFABLE_MIMETYPES`. Declarar um deles é o que torna a contradição
-detectável; fora dessa lista, só o `content_validator` olha o conteúdo.
+`SNIFFABLE_MIMETYPES`; declarar um deles é o que torna a contradição
+detectável.
 
 ```python
 from tempest_fastapi_sdk.utils import SNIFFABLE_MIMETYPES
@@ -157,16 +346,12 @@ print(sorted(SNIFFABLE_MIMETYPES))
 
 ### Arquivo que vai ser servido de volta
 
-Se o arquivo enviado volta a ser servido pela sua API (avatar, anexo,
-comprovante), feche o upload nas duas pontas: `allowed_extensions` recusa o
-nome errado, e `verify_magic_bytes=True` + `allowed_mimetypes` recusam o
-conteúdo que não bate com o tipo — um HTML renomeado para `.png` é `415`:
+Use quando o arquivo volta a ser servido pela API (avatar, anexo,
+comprovante): feche nome **e** conteúdo, e um HTML renomeado para `.png` é
+`415`.
 
 ```python
-from fastapi import FastAPI, UploadFile
-from fastapi.testclient import TestClient
-
-from tempest_fastapi_sdk import UploadUtils, register_exception_handlers
+from tempest_fastapi_sdk import UploadUtils
 
 uploads = UploadUtils(
     "uploads",
@@ -174,45 +359,22 @@ uploads = UploadUtils(
     allowed_mimetypes={"image/png", "image/jpeg", "application/pdf"},
     verify_magic_bytes=True,
 )
-app = FastAPI()
-register_exception_handlers(app)
-
-
-@app.post("/files")
-async def upload_file(file: UploadFile) -> dict[str, str]:
-    """Grava só PNG, JPEG ou PDF cujos bytes batem com o tipo."""
-    key = await uploads.save(file)
-    return {"key": str(key)}
-
-
-client = TestClient(app)
-png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
-html = b"<script>window.ran = true</script>"
-for name, data, mime in [
-    ("photo.png", png, "image/png"),
-    ("evil.html", html, "text/html"),
-    ("evil.png", html, "image/png"),
-]:
-    response = client.post("/files", files={"file": (name, data, mime)})
-    print(name, response.status_code)
 ```
 
-```text
-photo.png 200
-evil.html 415
-evil.png 415
-```
+Medido com esta configuração: `photo.png` com bytes de PNG → `200`;
+`evil.html` (`text/html`) → `415`; o mesmo HTML como `evil.png` / `image/png`
+→ `415`. O programa da [referência rápida](#excecoes-e-status-http) dispara
+as mesmas recusas.
 
 O download já se defende sozinho — toda resposta sai com `nosniff` e a CSP
 `sandbox`, e HTML/SVG nunca vão `inline` (veja
-[Downloads](downloads.md#headers-de-seguranca-e-o-que-vai-inline)). Validar
-na entrada é a outra metade: o arquivo hostil nem chega ao storage.
+[Downloads](downloads.md#headers-de-seguranca-e-o-que-vai-inline)). Validar na
+entrada é a outra metade: o arquivo hostil nem chega ao storage.
 
-### Via settings (`.env`)
+### Configurar pelo `.env`
 
-Quando preferir configurar por ambiente, componha o mixin `UploadSettings` na
-sua classe `Settings` (veja [Settings](settings.md)); ele já expõe
-`UPLOAD_ALLOWED_EXTENSIONS` (e `UPLOAD_ALLOWED_MIMETYPES`):
+Use o mixin `UploadSettings` quando a allowlist e o teto vêm do ambiente
+(como compor a classe: [Settings](settings.md)).
 
 ```bash
 # .env
@@ -226,32 +388,27 @@ from tempest_fastapi_sdk import UploadUtils
 from src.core.settings import settings
 
 
-uploads = UploadUtils(
-    settings.UPLOAD_DIR,
-    allowed_extensions=settings.UPLOAD_ALLOWED_EXTENSIONS,
-    max_size_bytes=settings.UPLOAD_MAX_SIZE_BYTES,
-)
+uploads = UploadUtils(**settings.upload_kwargs())
 ```
+
+`UploadSettings` traz `UPLOAD_DIR`, `UPLOAD_MAX_SIZE_BYTES`,
+`UPLOAD_ALLOWED_EXTENSIONS` e `UPLOAD_ALLOWED_MIMETYPES`, e o
+`upload_kwargs()` os entrega ao construtor.
 
 !!! tip "Vazio e `0` significam sem restrição"
     Sem `UPLOAD_ALLOWED_EXTENSIONS` no ambiente o campo vale `set()`, e
-    `UPLOAD_MAX_SIZE_BYTES=0` desliga o limite. O `UploadUtils` trata
-    `set()` e `0` exatamente como `None` — sem checagem —, então tanto o
-    código acima quanto `UploadUtils(**settings.upload_kwargs())` aceitam
-    qualquer extensão quando a allowlist não foi configurada, em vez de
-    recusar todo upload com 415.
+    `UPLOAD_MAX_SIZE_BYTES=0` desliga o limite. O `UploadUtils` trata `set()` e
+    `0` exatamente como `None` — sem checagem —, em vez de recusar todo upload
+    com 415.
 
 ## Foto com tipo declarado — `ImageMediaTypeEnum`
 
-Às vezes o arquivo não passa pelo `UploadUtils`: a rota lê os bytes, junta
-com o tipo que o app declarou num campo e grava em outro lugar. Aí a
-conferência que o `verify_magic_bytes` faria fica com você — e ela costuma
-nascer à mão: um `field_validator` que faz `strip().lower()`, uma allowlist de
-strings, um dict tipo → extensão e uma função que compara assinatura.
+Use quando o arquivo **não** passa pelo `UploadUtils` (a rota lê os bytes e
+grava em outro lugar) e o app declara o tipo num campo: o enum normaliza o
+tipo, recusa o desconhecido e confere os bytes.
 
-O `ImageMediaTypeEnum` é tudo isso num tipo de campo. Os membros são exatamente os
-tipos de imagem que o `sniff_mime` reconhece pelos bytes: `JPEG`, `PNG`, `GIF`,
-`BMP`, `WEBP` e `HEIC`.
+Os membros são os tipos de imagem que o `sniff_mime` reconhece: `JPEG`, `PNG`,
+`GIF`, `BMP`, `WEBP` e `HEIC`.
 
 ```python
 from pydantic import BaseModel, ValidationError
@@ -277,29 +434,24 @@ except ValidationError as exc:
     print(exc.errors()[0]["type"])
 ```
 
-Saída:
-
 ```text
 image/jpeg
 jpg
 enum
 ```
 
-- A entrada é comparada **sem diferenciar maiúsculas** e sem o espaço em
-  volta; os aliases que o `UploadUtils` já aceita (`image/jpg`,
-  `image/pjpeg` → JPEG, `image/x-png` → PNG) viram o membro canônico.
-- Valor desconhecido é o erro `enum` normal do Pydantic — numa rota, `422` —,
-  e o JSON Schema (portanto o `openapi.json`) lista os seis valores canônicos.
+- A entrada é comparada **sem diferenciar maiúsculas** e sem o espaço em volta;
+  os aliases que o `UploadUtils` aceita (`image/jpg`, `image/pjpeg` → JPEG,
+  `image/x-png` → PNG) viram o membro canônico.
+- Valor desconhecido é o erro `enum` do Pydantic — numa rota, `422` —, e o JSON
+  Schema (portanto o `openapi.json`) lista os seis valores canônicos.
 - `.extension` dá a extensão do arquivo (`"jpg"`, `"png"`, `"gif"`, `"bmp"`,
   `"webp"`, `"heic"`).
 
 ### Aceitar só alguns tipos — `image_media_type_field`
 
-Foto de câmera não chega como GIF nem BMP, e aceitar os seis tipos deixa
-passar o que o resto do serviço não sabe tratar. Escrever um
-`field_validator` para isso traz a allowlist de volta — e o `openapi.json`
-continua anunciando os seis. O `image_media_type_field` restringe o campo e
-o schema juntos:
+Use quando nem todos os seis tipos servem: o `image_media_type_field` restringe
+o campo **e** o JSON Schema juntos, sem `field_validator` à mão.
 
 ```python
 from typing import Annotated
@@ -341,8 +493,6 @@ print(field["enum"])
 print(field["examples"])
 ```
 
-Saída:
-
 ```text
 image/png
 value_error | Value error, image type must be one of: image/jpeg, image/png, image/webp, image/heic
@@ -354,14 +504,14 @@ value_error | Value error, image type must be one of: image/jpeg, image/png, ima
   `image/x-png` continuam virando `ImageMediaTypeEnum.PNG`.
 - Tipo conhecido mas fora da lista é `value_error` (numa rota, `422`) com os
   permitidos na mensagem; tipo desconhecido continua sendo o erro `enum`.
-- O JSON Schema lista **só** os permitidos. `description` e `examples` saem
-  da lista quando você não passa os seus (o exemplo é o primeiro permitido).
+- O JSON Schema lista **só** os permitidos. `description` e `examples` saem da
+  lista quando você não passa os seus (o exemplo é o primeiro permitido).
 - Sem argumentos, `image_media_type_field()` aceita os seis e só preenche
   título, descrição e exemplo.
 
 !!! warning "O OpenAPI ganha um `ImageMediaTypeEnum` órfão — `prune_orphan_enum_schemas`"
-    O FastAPI publica um componente para **todo** campo anotado com um
-    `Enum`, mesmo quando o schema do campo traz o enum restrito inline. O
+    O FastAPI publica um componente para **todo** campo anotado com um `Enum`,
+    mesmo quando o schema do campo traz o enum restrito inline. O
     `components.schemas.ImageMediaTypeEnum` sai com os seis membros e nenhum
     `$ref` aponta para ele, e o gerador de cliente cria um enum morto. Uma
     linha no `create_app` tira os enums que ninguém referencia (o `tempest
@@ -385,8 +535,8 @@ value_error | Value error, image type must be one of: image/jpeg, image/png, ima
 
 ### Conferir os bytes contra o tipo declarado
 
-O tipo declarado é do cliente. `.matches(data)` pergunta ao `sniff_mime` o que
-os bytes **são** e compara com o membro:
+Use `.matches(data)` para perguntar ao `sniff_mime` o que os bytes **são** e
+comparar com o tipo que o cliente declarou.
 
 ```python
 from typing import Annotated
@@ -429,13 +579,15 @@ async def upload_photo(
     return PhotoResponseSchema(key=key, content_type=content_type)
 ```
 
-Com uma foto HEIC declarada como `" Image/HEIC "`, a rota responde `200` com a
-key `photos/<uuid>.heic`. O mesmo JPEG declarado como `image/jpg` passa; como
-`image/png`, é recusado com `415 INVALID_FILE_TYPE`. `image/avif` nem chega ao
-corpo da função: `422` da validação.
-Uma foto acima de `MAX_PHOTO_BYTES` para de ser lida no bloco que cruza o
-teto e volta `413`, com `code` `UPLOAD_TOO_LARGE` e o teto em
-`details.max_bytes` (até a 0.348.0 era `422 VALIDATION_ERROR`).
+| Envio | Resposta |
+| --- | --- |
+| HEIC declarado como `" Image/HEIC "` | `200`, key `photos/<uuid>.heic` |
+| JPEG declarado como `image/jpg` | `200` |
+| JPEG declarado como `image/png` | `415 INVALID_FILE_TYPE` |
+| `image/avif` | `422` da validação, antes do corpo da função |
+| Foto acima de `MAX_PHOTO_BYTES` | `413 UPLOAD_TOO_LARGE`, teto em `details.max_bytes` (até a 0.348.0 era `422 VALIDATION_ERROR`) |
+
+O `read_upload_capped` para de ler no bloco que cruza o teto.
 
 !!! info "HEIC pelos bytes"
     Um HEIC é uma caixa `ftyp` do ISO-BMFF: `ftyp` nos bytes 4 a 8 e a marca
@@ -453,10 +605,10 @@ teto e volta `413`, com `code` `UPLOAD_TOO_LARGE` e o teto em
     EXIF dentro (GPS, aparelho). Para gravar ou repassar sem isso, veja
     [Metadados de imagem](image-metadata.md).
 
-## Alternar por settings
+## Alternar o backend por settings
 
 Escolha o argumento do construtor conforme uma flag do seu `Settings` — não
-precisa de backend pluggável manual:
+precisa de backend pluggável manual.
 
 ```python
 # src/api/dependencies/resources.py
@@ -470,82 +622,51 @@ else:
     uploads = UploadUtils(settings.UPLOAD_DIR)
 ```
 
-(`UPLOAD_BACKEND` é um campo do seu `Settings`; o SDK só carrega
-`UPLOAD_DIR` / `UPLOAD_MAX_SIZE_BYTES` / `UPLOAD_ALLOWED_EXTENSIONS` /
-`UPLOAD_ALLOWED_MIMETYPES` via `UploadSettings`.)
+`UPLOAD_BACKEND` é um campo do **seu** `Settings`; o SDK só traz os
+`UPLOAD_*` do `UploadSettings`.
 
-## Operações comuns
+## Trocar um arquivo (avatar, anexo) — `replace`
+
+Use quando o usuário manda um arquivo novo e o antigo tem de sumir, sem risco de
+ficar sem nenhum.
 
 ```python
-import asyncio
-
 from fastapi import UploadFile
 
 from tempest_fastapi_sdk import UploadUtils
 
-file: UploadFile = ...  # comes from the endpoint signature
-uploads = UploadUtils(source="./uploads")
+uploads = UploadUtils("./uploads")
 
 
-async def main() -> None:
-    """Run this example."""
-    key = await uploads.save(file, filename="logo.png")  # -> Path("logo.png")
-    removed = await uploads.delete(key)                  # async; True/False
+async def replace_avatar(user_id: str, old_key: str | None, file: UploadFile) -> str:
+    """Grava o avatar novo e apaga o anterior.
 
+    Args:
+        user_id (str): Dono do avatar; vira o nome do arquivo.
+        old_key (str | None): Key salva hoje no banco (`None` no primeiro upload).
+        file (UploadFile): O arquivo novo.
 
-asyncio.run(main())
+    Returns:
+        str: A key nova, para guardar no lugar da antiga.
+    """
+    new_key = await uploads.replace(old_key, file, filename=f"{user_id}.jpg")
+    return str(new_key)
 ```
 
-### Trocar um arquivo (avatar, anexo) — `replace`
-
-O caso clássico: o usuário manda uma foto de perfil nova e você quer
-**gravar a nova e apagar a antiga**. Em vez de fazer `save` + `delete` na
-mão (e arriscar apagar pelo backend errado), use `replace`:
-
-```python
-import asyncio
-
-from fastapi import UploadFile
-
-from tempest_fastapi_sdk import UploadUtils
-
-from src.db.models import UserModel
-
-file: UploadFile = ...  # comes from the endpoint signature
-uploads = UploadUtils(source="./uploads")
-user = UserModel(name="Ana", email="ana@example.com")
-
-
-async def main() -> None:
-    """Run this example."""
-    # old_key é o que está salvo hoje no model (pode ser None no 1º upload)
-    new_key = await uploads.replace(
-        user.profile_picture, file, filename=f"{user.id}.jpg"
-    )
-    user.profile_picture = str(new_key)
-
-
-asyncio.run(main())
-```
-
-!!! tip "A ordem importa — e o `replace` acerta pra você"
-    O `replace` **grava a nova primeiro** e só então apaga a antiga. Se a
-    validação reprovar o arquivo novo (extensão/MIME/tamanho), a antiga
-    fica **intacta** — você nunca fica sem imagem nenhuma. Passe
-    `old_key=None` no primeiro upload (não há nada pra apagar) e o método
-    só salva. Tudo passa pelo **mesmo backend** configurado (local ou
-    MinIO), evitando o erro de salvar num e apagar no outro.
+O `replace` **grava a nova primeiro** e só então apaga a antiga. Se a validação
+reprovar o arquivo novo, a antiga fica **intacta**; com `old_key=None` ele só
+salva. Tudo passa pelo **mesmo backend**, então não há como salvar num e apagar
+no outro. Para apagar sem substituir, `await uploads.delete(key)` devolve
+`True`/`False`.
 
 Para **baixar** o que foi enviado (local ou MinIO), use o
 [`DownloadUtils`](downloads.md) — ele aceita o mesmo backend no construtor.
 
-### Streaming direto pro backend — `write_stream` e `UploadResult`
+## Gravar um stream direto no backend — `write_stream` e `UploadResult`
 
-`save()` é a porta de entrada pra `UploadFile` do FastAPI e devolve a **key**.
-Quando os bytes não vêm de um formulário — proxy de outro serviço, resultado de
-um job, arquivo gerado na hora — fale com o backend direto: `write_stream`
-consome um `AsyncIterator[bytes]` sem buffer do arquivo inteiro na memória, e
-devolve um `UploadResult`:
+Use quando os bytes não vêm de um formulário (proxy de outro serviço, resultado
+de um job, arquivo gerado na hora): `write_stream` consome um
+`AsyncIterator[bytes]` sem carregar o arquivo inteiro na memória.
 
 ```python
 from collections.abc import AsyncIterator
@@ -574,15 +695,18 @@ async def store_report(chunks: AsyncIterator[bytes]) -> UploadResult:
 
 `max_size_bytes=` corta o stream ao cruzar o teto (`FileTooLargeException`), e
 `validator=` inspeciona os primeiros bytes — as duas checagens rodam
-**enquanto** grava, sem esperar o arquivo terminar.
+**enquanto** grava.
 
-## Quando usar presigned PUT direto
+## Arquivo grande: presigned PUT direto no bucket
 
-Pra arquivos > 50 MB, evite buffer em memória — mande o cliente fazer `PUT`
-direto no MinIO via URL presigned. Veja
+Acima de ~50 MB, evite que o arquivo passe pelo seu processo: o cliente faz
+`PUT` direto no MinIO por uma URL presigned. Veja
 [Storage MinIO/S3](storage.md#presigned-url-upload-direto-do-browser).
 
-## Migração de < v0.41.0
+## Migrar de < v0.41.0
+
+Na v0.41.0 o backend passou para o construtor e o `save(file, storage=...)` por
+chamada **foi removido**.
 
 - `UploadUtils("./dir")` continua igual (disco local).
 - `UploadUtils("./tmp")` + `save(file, storage=MinIOUploadStorage(client))`
@@ -593,19 +717,14 @@ direto no MinIO via URL presigned. Veja
 
 ## Recap
 
-- `UploadUtils` escolhe o backend **uma vez, no construtor**: uma pasta grava
-  em disco, um `AsyncMinIOClient` grava no bucket. O resto do código de upload
-  não muda.
-- `allowed_extensions` é allowlist, não denylist — e o `UploadSettings` deixa
-  configurar por ambiente.
-- Arquivo que volta a ser servido: `allowed_extensions` + `verify_magic_bytes=True`
-  + `allowed_mimetypes`, para o conteúdo bater com o tipo.
-- Bytes que não passam pelo `UploadUtils`: `ImageMediaTypeEnum` como tipo do
-  campo (aceita alias e maiúscula, `422` no resto) e `.matches(data)` para os
-  bytes baterem com o tipo declarado — HEIC incluído.
-- `save()` recebe o `UploadFile` do FastAPI e devolve a **key**; é a key que
-  você guarda no banco, não o caminho.
-- `replace` cobre o caso do avatar trocado sem deixar órfão, e `write_stream`
-  evita carregar arquivo grande na memória.
-- Acima de ~50 MB, o caminho é presigned PUT: o cliente manda direto para o
-  bucket, e o seu processo não vira gargalo.
+- `UploadUtils` escolhe o backend **uma vez, no construtor**: pasta grava em
+  disco, `AsyncMinIOClient` grava no bucket.
+- `save()` devolve a **key** relativa (`Path`); é ela que vai para o banco.
+- Recusas: tipo, MIME, magic bytes e `content_validator` → `415
+  INVALID_FILE_TYPE`; tamanho → `413 FILE_TOO_LARGE`; sem token numa rota com
+  `current_user_dependency()` → `401`.
+- Arquivo que volta a ser servido: `allowed_extensions` +
+  `verify_magic_bytes=True` + `allowed_mimetypes`.
+- Bytes fora do `UploadUtils`: `ImageMediaTypeEnum` no campo e `.matches(data)`.
+- `replace` troca sem deixar órfão; `write_stream` grava sem carregar na
+  memória; acima de ~50 MB, presigned PUT.

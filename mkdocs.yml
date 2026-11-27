@@ -132,6 +132,7 @@ plugins:
                 - Integrated example (complete admin): admin-showcase.md
                 - Integrated example (local marketplace): marketplace-local.md
                 - Integrated example (Pix checkout): integrated.md
+              - "Complete service (settings, auth, upload, test)": recipes/full-service.md
               - Computer vision (ONNX): recipes/vision.md
               - "Data subject export and erasure (LGPD)": recipes/subject-data.md
               - Database: recipes/database.md
@@ -554,6 +555,7 @@ nav:
       - "Salas de jogo online (WebSocket)": recipes/game-rooms-websocket.md
       - Segurança: recipes/security.md
       - "Server-Sent Events (SSE)": recipes/sse.md
+      - "Serviço completo (settings, auth, upload, teste)": recipes/full-service.md
       - Sessões server-side: recipes/sessions.md
       - "Settings (mixins e ordem de composição)": recipes/settings.md
       - "Slides, gabaritos e Markdown em PDF": recipes/slides.md
