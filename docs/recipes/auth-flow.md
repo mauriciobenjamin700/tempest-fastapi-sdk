@@ -885,7 +885,8 @@ uv add "tempest-fastapi-sdk[auth,email,sqlite]" uvicorn
 
 `[auth]` traz bcrypt e PyJWT, `[sqlite]` traz o driver `aiosqlite`, e
 `[email]` traz o Jinja2 que as páginas HTML do [Modo E](#modo-e-backend-only-v0320)
-renderizam. O `uvicorn` é o servidor.
+renderizam. O `uvicorn` é o servidor. A classe `Settings` abaixo compõe
+mixins — a tabela de todos eles está em [Settings](settings.md).
 
 ```python
 # main.py
@@ -1709,7 +1710,8 @@ Sem frontend? O método de serviço por trás do endpoint é público —
 
 ## Settings — variáveis de ambiente
 
-Toda a config do flow vem de mixins de settings. Mixe-as na sua classe `Settings`:
+Toda a config do flow vem de mixins de settings. Mixe-as na sua classe `Settings`
+(tabela de todos os mixins e a regra de ordem em [Settings](settings.md)):
 
 ```python
 # src/core/settings.py
