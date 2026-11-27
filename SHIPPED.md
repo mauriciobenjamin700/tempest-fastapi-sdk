@@ -5147,3 +5147,18 @@ caminho do `400` de `think`, também no stream. No `Agent`, a execução termina
 endpoints, com e sem stream; ausente e `true` cortam para 1026. Testes:
 `tests/genai/test_ollama_truncate.py`. Docs: receita de genai ("Falhar em vez
 de cortar") e de agentes.
+
+## Fake de saída estruturada e receita de testes com lifespan (#880)
+
+`FakeStructuredBackend` + `StructuredRequest` em
+`testing/fakes/genai.py`: `chat_structured` / `generate_structured` com a
+assinatura do `OllamaGenerator`, respondendo de `queue(...)`; sem resposta
+default (fila vazia → `LookupError`, schema trocado → `TypeError`). O contrato
+é comparado método a método contra o `OllamaGenerator` (nome, tipo e default de
+parâmetro) em `METHOD_SEAMS`, `tests/testing/test_fakes_contract.py`, porque o
+`StructuredTextBackend` não declara `think`/`truncate`. Testes:
+`tests/testing/test_fake_structured.py`. Docs: `docs/recipes/testing.md`
+(`conftest.py` com ambiente antes do import, SQLite em arquivo por worker,
+`app.router.lifespan_context(app)`; signup → login → `/auth/me`; override do
+gerador numa rota) e a seção "Saída estruturada" de `docs/recipes/fakes.md`,
+as duas com `.en.md`. O `asgi-lifespan` não entrou: não é dependência.

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`FakeStructuredBackend`** em `tempest_fastapi_sdk.testing.fakes` (#880):
+  `chat_structured` e `generate_structured` com a mesma assinatura do
+  `OllamaGenerator` (`config`, `think`, `truncate`, `**kwargs`), respondendo
+  com a próxima instância Pydantic de `queue(...)`. Cada chamada fica em
+  `requests` (`StructuredRequest`: `method`, `messages`, `schema`, `config`,
+  `think`, `truncate`, `options`) e em `prompts`; `fail_next` e `calls` como
+  nos outros fakes. Fila vazia levanta `LookupError` e instância de outro
+  schema levanta `TypeError` — o fake não inventa resposta. Satisfaz o
+  protocolo `StructuredTextBackend`.
+- **Receita de testes com lifespan, login e fake de LLM** (#880):
+  `docs/recipes/testing.md` ganha o `conftest.py` que fixa o ambiente antes do
+  import do app, usa SQLite em arquivo temporário por worker e abre o
+  lifespan com `app.router.lifespan_context(app)`; o teste signup → login →
+  `/auth/me` com `make_auth_router`; e o override do gerador numa rota com o
+  `FakeStructuredBackend`. Medido no app do `tempest new --extras auth`
+  (httpx 0.28.1, FastAPI 0.165.0): o `ASGITransport` sozinho não entra no
+  lifespan, e o primeiro request levanta
+  `sqlite3.OperationalError: no such table: users`.
+
 ### Fixed
 
 - **`tempest db revision` sem `ruff` não imprime erro falso** (#883). O
@@ -24,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rodando `ruff format` e depois `ruff check --fix`. Um `alembic.ini` já
   gerado mantém os hooks antigos: troque o bloco `[post_write_hooks]` pelo
   da receita de migrations para ganhar a correção.
+
 
 ## [0.374.0] — 2026-11-27
 

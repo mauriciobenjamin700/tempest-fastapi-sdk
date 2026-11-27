@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 
 from tempest_fastapi_sdk.genai.moderation import ModerationBackend
+from tempest_fastapi_sdk.genai.ollama import OllamaGenerator
 from tempest_fastapi_sdk.genai.rag.search import WebSearchBackend
 from tempest_fastapi_sdk.genai.text import TextBackend
 from tempest_fastapi_sdk.geo.geocoding import GeocodingBackend
@@ -44,6 +45,7 @@ from tempest_fastapi_sdk.testing.fakes import (
     FakePushDispatcher,
     FakeRevenueCatClient,
     FakeRoutingBackend,
+    FakeStructuredBackend,
     FakeTextBackend,
     FakeWebSearchBackend,
 )
@@ -78,6 +80,21 @@ match is the API the real adapter calls. Each one is covered instead by the
 file named here, which runs the **real** adapter over it.
 """
 
+METHOD_SEAMS: list[tuple[type[Any], type[Any], tuple[str, ...]]] = [
+    (
+        FakeStructuredBackend,
+        OllamaGenerator,
+        ("chat_structured", "generate_structured"),
+    ),
+]
+"""Fakes that stand in for some methods of a concrete class.
+
+``StructuredTextBackend`` declares only ``chat_structured`` and leaves out
+the ``think``/``truncate`` keywords a route passes to ``OllamaGenerator``.
+The fake follows the generator, so it is compared method by method against
+it, not against the narrower protocol.
+"""
+
 
 def _protocol_methods(seam: type[Any]) -> list[str]:
     """List the callables a seam requires.
@@ -103,7 +120,11 @@ def test_every_exported_fake_has_a_seam() -> None:
     someone adds the ninth fake.
     """
     exported = {name for name in fakes.__all__ if name.startswith("Fake")}
-    covered = {fake.__name__ for fake, _ in SEAMS} | set(HTTP_API_FAKES)
+    covered = (
+        {fake.__name__ for fake, _ in SEAMS}
+        | set(HTTP_API_FAKES)
+        | {fake.__name__ for fake, _, _ in METHOD_SEAMS}
+    )
 
     assert exported == covered, f"uncovered: {sorted(exported - covered)}"
 
@@ -180,6 +201,32 @@ def test_fake_is_async_exactly_where_the_seam_is(
         fake_is_async = inspect.iscoroutinefunction(getattr(fake, name))
 
         assert seam_is_async == fake_is_async, f"{fake.__name__}.{name}"
+
+
+@pytest.mark.parametrize(
+    "fake,seam,methods",
+    METHOD_SEAMS,
+    ids=lambda item: getattr(item, "__name__", ""),
+)
+def test_method_seam_fake_matches_each_method(
+    fake: type[Any], seam: type[Any], methods: tuple[str, ...]
+) -> None:
+    """Parameters, kinds, defaults, return and async-ness agree per method.
+
+    Stricter than the protocol comparison above: kinds and defaults are
+    compared too, because the seam is a concrete class whose defaults a
+    caller relies on.
+    """
+    for name in methods:
+        expected = inspect.signature(getattr(seam, name))
+        actual = inspect.signature(getattr(fake, name))
+
+        assert [(p.name, p.kind, p.default) for p in actual.parameters.values()] == [
+            (p.name, p.kind, p.default) for p in expected.parameters.values()
+        ], f"{fake.__name__}.{name}{actual} != {seam.__name__}.{name}{expected}"
+        assert str(actual.return_annotation) == str(expected.return_annotation)
+        assert inspect.iscoroutinefunction(getattr(fake, name))
+        assert inspect.iscoroutinefunction(getattr(seam, name))
 
 
 def test_the_push_fake_declares_the_platforms_attribute() -> None:
