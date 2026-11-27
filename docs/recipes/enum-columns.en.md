@@ -62,7 +62,7 @@ The three changed defaults:
     ```
 
     Renaming needs no migration: `Party` and `PartyEnum` give the same type,
-    `party_enum`. Details in the [CLI recipe](cli.md#layer-rules-tempest-lint-layers).
+    `party_enum`. Details in the [CLI recipe](cli/lint-layers.md).
 
 !!! info "Declaration order becomes the type's order"
     PostgreSQL sorts an `ENUM` column by label order, not alphabetically.

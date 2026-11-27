@@ -125,7 +125,7 @@ The `LAY`, `STR`, `IMP`, `INIT`, `SIZE`, `DI`, `RTR003`–`RTR006` and `TST` cod
 **warnings**: they only fail `tempest check` with `layers_strict = true`,
 which the generated `pyproject.toml` already turns on. The table of every
 code, with each one's real output, is in
-[CLI › Layer rules](recipes/cli.md#layer-rules-tempest-lint-layers).
+[CLI › Layer rules](recipes/cli/lint-layers.md).
 
 !!! note "What has no gate"
     The resource singleton, `core/constants` and `db/configs` are

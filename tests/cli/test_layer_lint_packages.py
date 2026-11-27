@@ -268,8 +268,8 @@ class TestRuleTables:
     @pytest.mark.parametrize(
         "relative",
         [
-            "docs/recipes/cli.md",
-            "docs/recipes/cli.en.md",
+            "docs/recipes/cli/lint-layers.md",
+            "docs/recipes/cli/lint-layers.en.md",
             "tempest_fastapi_sdk/cli/_templates/CLAUDE.md.tmpl",
         ],
     )

@@ -631,7 +631,7 @@ def test_exported_schemas_carry_metadata() -> None:
 `schema_metadata_findings(module)` returns the findings without raising, and
 `tempest lint-schemas` prints the same list on the command line — what
 counts as a leaf field, inheritance and the real output are in the
-[CLI recipe](cli.md#schema-metadata-tempest-lint-schemas).
+[CLI recipe](cli/lint-schemas.md).
 
 ## Model factories — `ModelFactory` + `seq`
 

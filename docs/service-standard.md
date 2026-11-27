@@ -126,7 +126,7 @@ Os códigos `LAY`, `STR`, `IMP`, `INIT`, `SIZE`, `DI`, `RTR003`–`RTR006` e `TS
 **avisos**: só derrubam o `tempest check` com `layers_strict = true`, que o
 `pyproject.toml` gerado já liga. A tabela de todos os códigos, com a saída
 real de cada um, está em
-[CLI › Regras de camada](recipes/cli.md#regras-de-camada-tempest-lint-layers).
+[CLI › Regras de camada](recipes/cli/lint-layers.md).
 
 !!! note "O que não tem gate"
     Singleton de recurso, `core/constants` e `db/configs` são

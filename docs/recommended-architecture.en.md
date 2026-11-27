@@ -45,7 +45,7 @@ tempest lint-layers --rule IMP002
 ```
 
 The full code table, with each one's real output, is in
-[CLI › Layer rules](recipes/cli.md#layer-rules-tempest-lint-layers).
+[CLI › Layer rules](recipes/cli/lint-layers.md).
 
 ## 1. One class per file, in a context package
 
@@ -551,7 +551,7 @@ A leaf field carries all three; a field holding another schema, only
 `title` and `description`. This is the only rule that has to import the
 project, so it runs in the suite (`assert_schema_metadata`) and in the
 `tempest lint-schemas` command — details in
-[CLI › Schema metadata](recipes/cli.md#schema-metadata-tempest-lint-schemas).
+[CLI › Schema metadata](recipes/cli/lint-schemas.md).
 
 ## 9. The suite explains what it proves
 

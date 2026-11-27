@@ -28,7 +28,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[auth]` | `bcrypt`, `PyJWT` | `PasswordUtils`, `JWTUtils`, bundled `UserAuthService` + `make_auth_router` flow |
 | `[cache]` | `redis` | `AsyncRedisManager` + `@cached` + `RedisIdempotencyStore` |
 | `[cli]` | `tempest-cli` (which requires `ruff`), `typer`, `click` | the whole `tempest` command (`new`, `check`, `db`, …), quality gate included. Dev tooling: `uv add --dev "tempest-fastapi-sdk[cli]"` or `uv tool install "tempest-fastapi-sdk[cli]"`. Without it or `[cli-ops]`, `tempest` prints the install line and exits with code 2. Included in `[all]`. [Recipe](recipes/cli.md) |
-| `[cli-ops]` | `typer`, `click` | the `tempest` command without the gate, for a server: `doctor`, `db`, `shell`, `user`, `routes` and `[tool.tempest] commands` run; `tempest lint` and the other gate commands exit 2 naming `[cli]`. No `tempest-cli`, no `ruff`. `[cli]` contains it. [Recipe](recipes/cli.md#server-vs-development-cli-ops-and-cli) |
+| `[cli-ops]` | `typer`, `click` | the `tempest` command without the gate, for a server: `doctor`, `db`, `shell`, `user`, `routes` and `[tool.tempest] commands` run; `tempest lint` and the other gate commands exit 2 naming `[cli]`. No `tempest-cli`, no `ruff`. `[cli]` contains it. [Recipe](recipes/cli/new-service.md#server-vs-development-cli-ops-and-cli) |
 | `[genai-onnx]` | `onnxruntime`, `tokenizers` | Local-model inference from an ONNX export, with no PyTorch at runtime |
 | `[genai-structured]` | `lm-format-enforcer` | Grammar-enforced structured output: the local model can only emit JSON matching the schema |
 | `[genai-vlm]` | `pillow`, `torchvision` | Local vision-language model: describe an image, answer a question about one |

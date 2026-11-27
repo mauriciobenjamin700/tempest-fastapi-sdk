@@ -1127,7 +1127,7 @@ como primeira forma —, então uma checagem que acusasse a rota acusaria
 código correto. Escolher o método do controller, como acima, é revisão.
 Tabela completa, o opt-out `# tempest: router-builds` e o que as regras de
 router não veem em
-[CLI › Regras de camada](recipes/cli.md#regras-de-camada-tempest-lint-layers).
+[CLI › Regras de camada](recipes/cli/lint-layers.md).
 
 ### Recap
 

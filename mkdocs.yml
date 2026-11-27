@@ -149,7 +149,18 @@ plugins:
               - Cache: recipes/cache.md
               - Chat (conversations + messages): recipes/chat.md
               - Choosing a model: recipes/models.md
-              - CLI: recipes/cli.md
+              - CLI:
+                  - "Index": recipes/cli.md
+                  - "Docker: compose and Dockerfile": recipes/cli/docker.md
+                  - "Install and scaffold a service": recipes/cli/new-service.md
+                  - "Integrations, agents and the OpenAPI contract": recipes/cli/integrations.md
+                  - "Layer rules: `tempest lint-layers`": recipes/cli/lint-layers.md
+                  - "Quality gates and `tempest check`": recipes/cli/quality.md
+                  - "Queue, email, storage, flags, cache, models and doctor": recipes/cli/ops.md
+                  - "Routes, OpenAPI errors and permissions": recipes/cli/routes-openapi.md
+                  - "Schema metadata: `tempest lint-schemas`": recipes/cli/lint-schemas.md
+                  - "Serve, console and database": recipes/cli/run.md
+                  - "Users and secrets": recipes/cli/users-secrets.md
               - Comments + ratings: recipes/reviews.md
               - Complete examples:
                 - Fullstack web (SSR, WASM, server): fullstack-web.md
@@ -631,7 +642,18 @@ nav:
       - "Campos validados (tipos prontos)": recipes/fields.md
       - "Carteira e saque Pix": recipes/wallet.md
       - "Chat (conversas + mensagens)": recipes/chat.md
-      - CLI: recipes/cli.md
+      - CLI:
+          - "Índice": recipes/cli.md
+          - "Docker: compose e Dockerfile": recipes/cli/docker.md
+          - "Fila, e-mail, storage, flags, cache, modelos e doctor": recipes/cli/ops.md
+          - "Gates de qualidade e `tempest check`": recipes/cli/quality.md
+          - "Instalar e gerar um serviço": recipes/cli/new-service.md
+          - "Integrações, agentes e contrato OpenAPI": recipes/cli/integrations.md
+          - "Metadado de schema: `tempest lint-schemas`": recipes/cli/lint-schemas.md
+          - "Regras de camada: `tempest lint-layers`": recipes/cli/lint-layers.md
+          - "Rotas, erros do OpenAPI e permissões": recipes/cli/routes-openapi.md
+          - "Subir, console e banco": recipes/cli/run.md
+          - "Usuários e segredos": recipes/cli/users-secrets.md
       - "Cliente de integração (OpenAPI)": recipes/openapi-client.md
       - "Cliente de WebSocket (AsyncAPI)": recipes/asyncapi-client.md
       - "Colunas de enum (seguras nos dois bancos)": recipes/enum-columns.md

@@ -1129,7 +1129,7 @@ valid on the route handler and on the controller method alike — the
 its first form — so a check that flagged the route would flag correct code.
 Choosing the controller method, as above, is review. Full table, the
 `# tempest: router-builds` opt-out and what the router rules cannot see in
-[CLI › Layer rules](recipes/cli.md#layer-rules-tempest-lint-layers).
+[CLI › Layer rules](recipes/cli/lint-layers.md).
 
 ### Recap
 
