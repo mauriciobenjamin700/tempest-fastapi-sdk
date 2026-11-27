@@ -621,7 +621,12 @@ class AlembicHelper:
           whitespace (W291), so running the linter first would report
           errors the formatter is about to fix on the next hook.
           ``--quiet`` keeps the second pass silent when nothing
-          actionable remains.
+          actionable remains. The hook is Alembic's ``module`` type
+          pointing at ``tempest_fastapi_sdk.db._ruff_post_write``,
+          which looks ruff up first (next to the interpreter, then on
+          ``PATH``) and skips silently without one, so a ``[cli-ops]``
+          install without ruff creates the revision unformatted
+          instead of printing ``ruff: command not found`` (#883).
 
         The generated ini also carries **no**
         ``[loggers]``/``[handlers]``/``[formatters]`` sections, which is
@@ -699,13 +704,10 @@ class AlembicHelper:
             "timezone = UTC",
             "",
             "[post_write_hooks]",
-            "hooks = ruff_format, ruff_fix",
-            "ruff_format.type = exec",
-            "ruff_format.executable = ruff",
-            "ruff_format.options = format --quiet REVISION_SCRIPT_FILENAME",
-            "ruff_fix.type = exec",
-            "ruff_fix.executable = ruff",
-            "ruff_fix.options = check --fix --quiet REVISION_SCRIPT_FILENAME",
+            "hooks = ruff",
+            "ruff.type = module",
+            "ruff.module = tempest_fastapi_sdk.db._ruff_post_write",
+            "ruff.options = REVISION_SCRIPT_FILENAME",
             "",
         ]
         ini_path.write_text("\n".join(ini_lines), encoding="utf-8")

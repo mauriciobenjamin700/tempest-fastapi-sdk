@@ -78,17 +78,18 @@ class TestInit:
     def test_ini_has_ruff_post_write_hooks(self, alembic_project: Path) -> None:
         ini_text = (alembic_project / "alembic.ini").read_text()
         assert "[post_write_hooks]" in ini_text
-        # ``format`` must run BEFORE ``fix`` so the formatter wraps
-        # long lines / strips trailing whitespace before the linter
-        # has a chance to complain about them on stdout.
-        assert "hooks = ruff_format, ruff_fix" in ini_text
-        assert (
-            "ruff_fix.options = check --fix --quiet REVISION_SCRIPT_FILENAME"
-            in ini_text
-        )
-        assert (
-            "ruff_format.options = format --quiet REVISION_SCRIPT_FILENAME" in ini_text
-        )
+        assert "hooks = ruff\n" in ini_text
+        assert "ruff.type = module\n" in ini_text
+        assert "ruff.module = tempest_fastapi_sdk.db._ruff_post_write\n" in ini_text
+        assert "ruff.options = REVISION_SCRIPT_FILENAME\n" in ini_text
+        assert "executable = ruff" not in ini_text
+
+    def test_ruff_hook_formats_before_fixing(self) -> None:
+        """``format`` wraps long lines before ``check --fix`` can flag them."""
+        from tempest_fastapi_sdk.db._ruff_post_write import RUFF_STEPS
+
+        assert [step[0] for step in RUFF_STEPS] == ["format", "check"]
+        assert "--fix" in RUFF_STEPS[1]
 
     def test_ini_ships_empty_sqlalchemy_url(self, alembic_project: Path) -> None:
         """Credentials must never enter version control via alembic.ini."""

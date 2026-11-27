@@ -2721,8 +2721,9 @@ de data ordena cronologicamente e torna conflitos de merge óbvios.
     que o formatter vem primeiro: ele é quem quebra a linha longa e tira
     o espaço à direita, então rodar o linter antes reportaria erros que
     o hook seguinte ia consertar. Os hooks usam a
-    config de `ruff` do **seu** projeto. Requer `ruff` no `PATH` — já é
-    dependência de dev em todo scaffold `tempest new`.
+    config de `ruff` do **seu** projeto. Sem `ruff` (no `PATH` ou no
+    ambiente do Python que roda o Alembic) a revisão sai sem formatação e
+    sem erro; em todo scaffold `tempest new` ele já é dependência de dev.
 
 ### Aplicar no startup
 
