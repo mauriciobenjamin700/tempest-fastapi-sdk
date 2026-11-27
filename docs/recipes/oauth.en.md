@@ -452,7 +452,7 @@ turns creation off and has an administrator create and link the row.
     row.
 
     Generation goes through
-    [`generate_password`](../../../reference/web-ui-utils/#tempest_fastapi_sdk.utils.password.generate_password),
+    [`generate_password`](../../../reference/web-ui-utils/utils/#tempest_fastapi_sdk.utils.password.generate_password),
     which guarantees the character classes **by construction**. Drawing from a
     flat alphabet and hoping is the defect that function exists to avoid:
     measured against the real policy with complexity on, 200 000 samples each,

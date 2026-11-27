@@ -78,7 +78,7 @@ Três peças:
   O segundo vai em `on_status`.
 - **A resposta** é `200` depois que o handler retorna, com o nome do evento de volta —
   `{"ok": true, "event": "message.received"}`, um
-  [`ZapWebhookAckSchema`](../reference/integrations-payments.md#tempest_fastapi_sdk.integrations.messaging.zap.router.ZapWebhookAckSchema).
+  [`ZapWebhookAckSchema`](../reference/integrations-payments/integrations-messaging-zap-router.md#tempest_fastapi_sdk.integrations.messaging.zap.router.ZapWebhookAckSchema).
 
 Os parâmetros que a rota aceita:
 

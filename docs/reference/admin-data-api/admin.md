@@ -1,0 +1,91 @@
+# `tempest_fastapi_sdk.admin`
+
+O painel admin estilo Django: site, model admin, ações, políticas de acesso, auditoria e páginas.
+
+[« Admin, dados e API](../admin-data-api.md)
+
+---
+
+::: tempest_fastapi_sdk.admin.site.AdminSite
+::: tempest_fastapi_sdk.admin.config.AdminModel
+::: tempest_fastapi_sdk.admin.config.ChoiceSource
+::: tempest_fastapi_sdk.admin.config.EditValidator
+::: tempest_fastapi_sdk.admin.config.ReadonlyFieldsFor
+::: tempest_fastapi_sdk.admin.config.AdminRowScope
+::: tempest_fastapi_sdk.admin.config.AdminRowScopeError
+::: tempest_fastapi_sdk.admin.config.AdminCountStrategyEnum
+::: tempest_fastapi_sdk.admin.config.AdminCountStrategy
+::: tempest_fastapi_sdk.admin.impersonation.AdminImpersonateHandler
+::: tempest_fastapi_sdk.admin.impersonation.AdminImpersonateAccount
+::: tempest_fastapi_sdk.admin.impersonation.make_jwt_impersonation_handler
+::: tempest_fastapi_sdk.admin.impersonation.ADMIN_IMPERSONATION_TTL
+::: tempest_fastapi_sdk.admin.impersonation.ADMIN_IMPERSONATION_EVENT
+::: tempest_fastapi_sdk.admin.impersonation.ADMIN_IMPERSONATION_FAILED_EVENT
+::: tempest_fastapi_sdk.admin.impersonation.IMPERSONATION_TOKEN_PLACEHOLDER
+::: tempest_fastapi_sdk.admin.i18n.AdminLocale
+::: tempest_fastapi_sdk.admin.i18n.ADMIN_LOCALES
+::: tempest_fastapi_sdk.admin.i18n.DEFAULT_ADMIN_LOCALE
+::: tempest_fastapi_sdk.admin.i18n.ADMIN_MESSAGES
+::: tempest_fastapi_sdk.admin.i18n.admin_text
+::: tempest_fastapi_sdk.admin.i18n.admin_plural
+::: tempest_fastapi_sdk.admin.csv_import.ADMIN_IMPORT_MAX_BYTES
+::: tempest_fastapi_sdk.admin.csv_import.ADMIN_IMPORT_PREVIEW_MAX_AGE_SECONDS
+::: tempest_fastapi_sdk.admin.csv_import.ADMIN_IMPORT_PREVIEW_ROWS
+::: tempest_fastapi_sdk.admin.config.Inline
+::: tempest_fastapi_sdk.admin.config.Lens
+::: tempest_fastapi_sdk.admin.config.RelatedCount
+::: tempest_fastapi_sdk.admin.permissions.AdminPermissionEnum
+::: tempest_fastapi_sdk.admin.permissions.AdminAccessPolicy
+::: tempest_fastapi_sdk.admin.permissions.AdminActionPolicy
+::: tempest_fastapi_sdk.admin.permissions.AdminSurfaceEnum
+::: tempest_fastapi_sdk.admin.permissions.AdminSurfacePolicy
+::: tempest_fastapi_sdk.admin.dashboard.MetricCard
+::: tempest_fastapi_sdk.admin.dashboard.MetricValue
+::: tempest_fastapi_sdk.admin.dashboard.MetricTrend
+::: tempest_fastapi_sdk.admin.dashboard.MetricPartition
+::: tempest_fastapi_sdk.admin.metrics.MetricsArea
+::: tempest_fastapi_sdk.admin.metrics.MetricsProvider
+::: tempest_fastapi_sdk.admin.metrics.Threshold
+::: tempest_fastapi_sdk.admin.metrics.MetricLevelEnum
+::: tempest_fastapi_sdk.admin.actions.admin_action
+::: tempest_fastapi_sdk.admin.actions.resolve_admin_action
+::: tempest_fastapi_sdk.admin.actions.ActionHandler
+::: tempest_fastapi_sdk.admin.actions.SchemaActionHandler
+::: tempest_fastapi_sdk.admin.actions.AnyActionHandler
+::: tempest_fastapi_sdk.admin.actions.AdminActionContext
+::: tempest_fastapi_sdk.admin.actions.AdminActionResult
+::: tempest_fastapi_sdk.admin.actions.AdminSecret
+::: tempest_fastapi_sdk.admin.actions.AdminCreateHandler
+::: tempest_fastapi_sdk.admin.actions.CreateHandlerFunc
+::: tempest_fastapi_sdk.admin.manual_payout.manual_payout_admin
+::: tempest_fastapi_sdk.admin.manual_payout.make_mark_paid_action
+::: tempest_fastapi_sdk.admin.manual_payout.make_reject_action
+::: tempest_fastapi_sdk.admin.manual_payout.MARK_PAID_ACTION
+::: tempest_fastapi_sdk.admin.manual_payout.RECEIPT_CONTENT_TYPES
+::: tempest_fastapi_sdk.admin.manual_payout.REJECT_ACTION
+::: tempest_fastapi_sdk.admin.manual_payout.STATUS_LABELS
+::: tempest_fastapi_sdk.admin.mercado_pago_simulation.mercado_pago_simulation_actions
+::: tempest_fastapi_sdk.admin.mercado_pago_simulation.DANGEROUS_TRANSITIONS
+::: tempest_fastapi_sdk.admin.mercado_pago_simulation.DEFAULT_SIMULATION_TRANSITIONS
+::: tempest_fastapi_sdk.admin.mercado_pago_simulation.SIMULATION_ACTION_LABELS
+::: tempest_fastapi_sdk.admin.mercado_pago_simulation.SIMULATION_ACTION_PREFIX
+::: tempest_fastapi_sdk.admin.auth.AdminAuthBackend
+::: tempest_fastapi_sdk.admin.auth.UserModelAuthBackend
+::: tempest_fastapi_sdk.admin.router.make_admin_router
+::: tempest_fastapi_sdk.admin.router.ADMIN_SEARCH_RESULTS_PER_MODEL
+::: tempest_fastapi_sdk.admin.router.ADMIN_SEARCH_MAX_QUERY_LENGTH
+::: tempest_fastapi_sdk.admin.router.ADMIN_SEARCH_MAX_TERMS
+::: tempest_fastapi_sdk.admin.discovery.discover_models
+::: tempest_fastapi_sdk.admin.session.AdminSession
+::: tempest_fastapi_sdk.admin.session.AdminSessionRevocations
+::: tempest_fastapi_sdk.admin.session.AdminSubmissionNonces
+::: tempest_fastapi_sdk.admin.session.admin_credential_digest
+::: tempest_fastapi_sdk.admin.session.SignedCookieSessionStore
+::: tempest_fastapi_sdk.admin.session.AdminLoginCSRF
+
+::: tempest_fastapi_sdk.admin.actions.AdminAction
+::: tempest_fastapi_sdk.admin.auth.AdminAuthError
+::: tempest_fastapi_sdk.admin.config.FieldRef
+::: tempest_fastapi_sdk.admin.config.OrderRef
+::: tempest_fastapi_sdk.admin.location_map.BRLocationMap
+::: tempest_fastapi_sdk.admin.theme.AdminTheme

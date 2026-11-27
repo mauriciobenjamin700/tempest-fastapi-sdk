@@ -1,17 +1,19 @@
 """Guard that every public symbol reaches the rendered API reference.
 
 ``docs/reference.md`` promises that every symbol exported by the SDK is
-documented there. That promise silently broke as the SDK grew: 190 names
-across ``__all__`` were absent, including whole feature areas (``geo``,
+documented in the reference. That promise silently broke as the SDK grew:
+190 names across ``__all__`` were absent, including whole feature areas (``geo``,
 ``tasks``, ``chat``, ``reviews``) that had recipes but no reference at all.
 
 Parsing the markdown is not enough to catch that. A ``:::`` directive can
 name a module and render every member, and ``mkdocstrings`` filters can
 exclude whole classes of names (an ``!^[a-z_]+$`` filter silently dropped
 every function from the top-level directive). So this guard asserts against
-the **built HTML**: it renders the reference pages (one per theme, under
-``site/reference/``) and checks the anchor ids mkdocstrings actually
-emitted.
+the **built HTML**: it renders the reference pages and checks the anchor
+ids mkdocstrings actually emitted. The pages are one per module
+(``docs/reference/<theme>/<module>.md``, built under
+``site/reference/<theme>/<module>/``); the top-level page only links to
+them, so a root export counts once a module page renders it.
 
 The build is the slow part, so it runs once per session and the test is
 marked ``docs`` for easy deselection.
@@ -128,8 +130,8 @@ def test_public_symbols_are_in_the_reference(
     assert not missing, (
         f"{module_name}.__all__ exports these but the API reference does not "
         f"document them: {missing}. Add a `::: <module>.<name>` entry to the "
-        f"matching page under docs/reference/ (a bare `::: <module>` covers a "
-        f"whole namespace), "
+        f"module page under docs/reference/<theme>/ (a bare `::: <module>` "
+        f"covers a whole namespace), "
         f"or add the name to ALLOWED_ABSENT with the reason."
     )
 

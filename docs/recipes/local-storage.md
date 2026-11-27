@@ -13,7 +13,7 @@ servidor** e responde às mesmas chamadas do
 
 O que muda é o link. Um disco não tem endpoint que o navegador alcance, então
 o link "presigned" aponta para a **sua API**, assinado com
-[`sign_path`](../reference/web-ui-utils.md#tempest_fastapi_sdk.utils.signed_url.sign_path), e o
+[`sign_path`](../reference/web-ui-utils/utils.md#tempest_fastapi_sdk.utils.signed_url.sign_path), e o
 `make_local_storage_router` serve essas rotas.
 
 Não precisa de extra: só biblioteca padrão e o FastAPI que o SDK já traz. A

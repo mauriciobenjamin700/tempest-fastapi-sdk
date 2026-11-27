@@ -446,7 +446,7 @@ desliga a criação e faz um administrador criar e ligar a linha.
     porque o e-mail já está na linha.
 
     A geração passa por
-    [`generate_password`](../reference/web-ui-utils.md#tempest_fastapi_sdk.utils.password.generate_password),
+    [`generate_password`](../reference/web-ui-utils/utils.md#tempest_fastapi_sdk.utils.password.generate_password),
     que garante as classes de caractere **por construção**. Sortear de um
     alfabeto plano e torcer é o defeito que essa função existe para evitar:
     medido contra a política real com complexidade ligada, 200 000 amostras

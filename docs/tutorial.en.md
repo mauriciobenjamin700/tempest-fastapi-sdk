@@ -624,7 +624,7 @@ class UserRepository(BaseRepository[UserModel, UserResponseSchema]):
 
 Re-export it like the model — `src/db/repositories/users/__init__.py` with `from .user import UserRepository as UserRepository`, and `src/db/repositories/__init__.py` with `from .users import UserRepository as UserRepository`.
 
-The base repo gives you 20+ methods for free — see the [reference table](../../reference/admin-data-api/#tempest_fastapi_sdk.db.repository.BaseRepository). Add custom queries on top of the same `UserRepository`:
+The base repo gives you 20+ methods for free — see the [reference table](../../reference/admin-data-api/db/#tempest_fastapi_sdk.db.repository.BaseRepository). Add custom queries on top of the same `UserRepository`:
 
 ```python
 # src/db/repositories/users/user.py  (continued)
