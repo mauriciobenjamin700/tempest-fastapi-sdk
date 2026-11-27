@@ -1,6 +1,6 @@
 # Referência da API
 
-Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https://mkdocstrings.github.io/). Todo símbolo exportado no `__all__` de `tempest_fastapi_sdk` e dos seus submódulos públicos está documentado nas páginas abaixo — com assinatura completa, parâmetros, tipo de retorno, exceções levantadas e link para o código-fonte.
+Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https://mkdocstrings.github.io/). Todo símbolo exportado no `__all__` de `tempest_fastapi_sdk` e dos seus submódulos públicos está documentado nas páginas abaixo — com assinatura completa, parâmetros, tipo de retorno e exceções levantadas. O código-fonte de cada símbolo fica no repositório e no pacote instalado; a página não o repete.
 
 !!! info "Cobertura verificada, não prometida"
     `tests/test_reference_coverage.py` renderiza as páginas da referência e compara as âncoras emitidas com o `__all__` de cada módulo listado em `PUBLIC_MODULES`, então um símbolo novo nesses módulos que não chegue aqui quebra o `make check`.
@@ -14,15 +14,15 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ## Páginas
 
-A referência é dividida por tema: numa página só, o HTML passava de 70 MB.
+Abra o tema e depois o módulo: cada tema é um índice, e cada módulo tem a própria página. Numa página por tema o HTML chegava a 22 MB (#878); por módulo, nenhuma passa de 2 MB.
 
 | Página | O que documenta |
 | --- | --- |
-| **[Superfície de topo »](reference/top.md)** | Todo símbolo que `tempest_fastapi_sdk` reexporta na raiz, documentado no caminho de importação curto (`from tempest_fastapi_sdk import X`). A maioria também aparece nas páginas temáticas, no módulo onde é definida; na 0.371.0, 208 dos 832 nomes da raiz só estavam documentados aqui. |
-| **[Admin, dados e API »](reference/admin-data-api.md)** | O painel admin, a camada de dados (models, repository, sessão, migrations), a integração com o FastAPI, as exceções, os schemas base e as settings. |
-| **[Documentos e arquivos »](reference/documents-files.md)** | PDF, planilhas, slides, exportação e apagamento de dados (LGPD), registro de artefatos e a prévia de compartilhamento. |
-| **[Geração de cliente OpenAPI »](reference/openapi.md)** | O gerador de clientes tipados a partir de um documento OpenAPI (`tempest openapi-client`). |
+| **[Superfície de topo »](reference/top.md)** | Os nomes que `tempest_fastapi_sdk` reexporta na raiz (`from tempest_fastapi_sdk import X`), agrupados pela página do módulo que os documenta, cada um com link para a âncora dele. |
+| **[Admin, dados e API »](reference/admin-data-api.md)** | O painel admin, a camada de dados (models, repository, sessão, migrations), a integração com o FastAPI, autenticação, autorização e sessões, as exceções, os schemas base e as settings. |
+| **[Documentos e arquivos »](reference/documents-files.md)** | PDF, planilhas, slides, object storage e upload, exportação e apagamento de dados (LGPD), registro de artefatos e a prévia de compartilhamento. |
+| **[Geração de cliente OpenAPI »](reference/openapi.md)** | Os geradores de cliente tipado: HTTP a partir de um documento OpenAPI (`tempest openapi-client`) e WebSocket a partir de um documento AsyncAPI. |
 | **[IA e visão computacional »](reference/ai-vision.md)** | Agentes, modelos generativos self-hosted, modelops (export, bench, quantização), visão computacional, reconhecimento facial e busca aproximada de texto. |
-| **[Integrações e pagamentos »](reference/integrations-payments.md)** | O contrato canônico de pagamentos, os provedores (Mercado Pago, OpenPix, RevenueCat), o backend de upload do Google Drive, a carteira com saque Pix, o gateway de WhatsApp e o relatório de erros de app. |
-| **[Tempo real e mensageria »](reference/realtime-messaging.md)** | Fila e tarefas, WebSocket, SSE, Web Push, chat, comentários, event sourcing, feature flags e MCP. |
+| **[Integrações e pagamentos »](reference/integrations-payments.md)** | O contrato canônico de pagamentos, os provedores (Mercado Pago, OpenPix, Stripe, RevenueCat), o backend de upload do Google Drive, a carteira com saque Pix, o gateway de WhatsApp e o relatório de erros de app. |
+| **[Tempo real e mensageria »](reference/realtime-messaging.md)** | Fila e tarefas, WebSocket e salas, SSE, Web Push e push unificado, chat, comentários, event sourcing, feature flags e MCP. |
 | **[Web, UI e utilitários »](reference/web-ui-utils.md)** | Páginas SSR e a camada `ui`, utilitários, geolocalização, controle do host, system checks e as ferramentas de teste. |

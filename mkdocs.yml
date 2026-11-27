@@ -65,6 +65,7 @@ theme:
 # estado por locale zera as páginas coletadas).
 hooks:
   - mkdocs_hooks/llmstxt.py
+  - mkdocs_hooks/reference_top.py
 
 # docs/CLAUDE.md são instruções de agente sobre como escrever a documentação,
 # não uma página do site. Fica em docs/ para o Claude Code carregá-lo ao abrir
@@ -237,13 +238,94 @@ plugins:
             - Reference:
               - reference.md
               - "Top-level surface": reference/top.md
-              - "Admin, data and API": reference/admin-data-api.md
-              - "AI and computer vision": reference/ai-vision.md
-              - "Documents and files": reference/documents-files.md
-              - "Integrations and payments": reference/integrations-payments.md
-              - "OpenAPI code generation": reference/openapi.md
-              - "Real time and messaging": reference/realtime-messaging.md
-              - "Web, UI and utilities": reference/web-ui-utils.md
+              - "Admin, data and API":
+                  - "Index": reference/admin-data-api.md
+                  - "admin": reference/admin-data-api/admin.md
+                  - "admin.sql_shell": reference/admin-data-api/admin-sql-shell.md
+                  - "admin.storage": reference/admin-data-api/admin-storage.md
+                  - "admin.tasks": reference/admin-data-api/admin-tasks.md
+                  - "api": reference/admin-data-api/api.md
+                  - "auth": reference/admin-data-api/auth.md
+                  - "authz": reference/admin-data-api/authz.md
+                  - "cache": reference/admin-data-api/cache.md
+                  - "core": reference/admin-data-api/core.md
+                  - "db": reference/admin-data-api/db.md
+                  - "exceptions": reference/admin-data-api/exceptions.md
+                  - "schemas": reference/admin-data-api/schemas.md
+                  - "services, controllers": reference/admin-data-api/services-controllers.md
+                  - "sessions": reference/admin-data-api/sessions.md
+                  - "settings": reference/admin-data-api/settings.md
+              - "AI and computer vision":
+                  - "Index": reference/ai-vision.md
+                  - "agents": reference/ai-vision/agents.md
+                  - "faces": reference/ai-vision/faces.md
+                  - "genai": reference/ai-vision/genai.md
+                  - "genai.audio": reference/ai-vision/genai-audio.md
+                  - "genai.hub": reference/ai-vision/genai-hub.md
+                  - "genai.image": reference/ai-vision/genai-image.md
+                  - "genai.inventory": reference/ai-vision/genai-inventory.md
+                  - "genai.rag": reference/ai-vision/genai-rag.md
+                  - "modelops": reference/ai-vision/modelops.md
+                  - "text": reference/ai-vision/text.md
+                  - "vision": reference/ai-vision/vision.md
+              - "Documents and files":
+                  - "Index": reference/documents-files.md
+                  - "artifacts": reference/documents-files/artifacts.md
+                  - "pdf": reference/documents-files/pdf.md
+                  - "privacy": reference/documents-files/privacy.md
+                  - "share": reference/documents-files/share.md
+                  - "slides": reference/documents-files/slides.md
+                  - "spreadsheet": reference/documents-files/spreadsheet.md
+                  - "storage": reference/documents-files/storage.md
+              - "Integrations and payments":
+                  - "Index": reference/integrations-payments.md
+                  - "app_errors": reference/integrations-payments/app-errors.md
+                  - "integrations.messaging.zap": reference/integrations-payments/integrations-messaging-zap.md
+                  - "integrations.messaging.zap.inbox": reference/integrations-payments/integrations-messaging-zap-inbox.md
+                  - "integrations.messaging.zap.router": reference/integrations-payments/integrations-messaging-zap-router.md
+                  - "integrations.payment.adapters": reference/integrations-payments/integrations-payment-adapters.md
+                  - "integrations.payment.base": reference/integrations-payments/integrations-payment-base.md
+                  - "integrations.payment.mercado_pago": reference/integrations-payments/integrations-payment-mercado-pago.md
+                  - "integrations.payment.openpix": reference/integrations-payments/integrations-payment-openpix.md
+                  - "integrations.payment.routing": reference/integrations-payments/integrations-payment-routing.md
+                  - "integrations.payment.settlement": reference/integrations-payments/integrations-payment-settlement.md
+                  - "integrations.payment.stripe": reference/integrations-payments/integrations-payment-stripe.md
+                  - "integrations.storage.google_drive": reference/integrations-payments/integrations-storage-google-drive.md
+                  - "integrations.subscriptions.revenuecat": reference/integrations-payments/integrations-subscriptions-revenuecat.md
+                  - "wallet": reference/integrations-payments/wallet.md
+              - "OpenAPI code generation":
+                  - "Index": reference/openapi.md
+                  - "asyncapi": reference/openapi/asyncapi.md
+                  - "openapi": reference/openapi/openapi.md
+              - "Real time and messaging":
+                  - "Index": reference/realtime-messaging.md
+                  - "chat": reference/realtime-messaging/chat.md
+                  - "eventsourcing": reference/realtime-messaging/eventsourcing.md
+                  - "flags": reference/realtime-messaging/flags.md
+                  - "mcp": reference/realtime-messaging/mcp.md
+                  - "push": reference/realtime-messaging/push.md
+                  - "queue": reference/realtime-messaging/queue.md
+                  - "reviews": reference/realtime-messaging/reviews.md
+                  - "rooms": reference/realtime-messaging/rooms.md
+                  - "sse": reference/realtime-messaging/sse.md
+                  - "tasks": reference/realtime-messaging/tasks.md
+                  - "webpush": reference/realtime-messaging/webpush.md
+                  - "websockets": reference/realtime-messaging/websockets.md
+              - "Web, UI and utilities":
+                  - "Index": reference/web-ui-utils.md
+                  - "checks": reference/web-ui-utils/checks.md
+                  - "geo": reference/web-ui-utils/geo.md
+                  - "hostbridge": reference/web-ui-utils/hostbridge.md
+                  - "ssr": reference/web-ui-utils/ssr.md
+                  - "testing": reference/web-ui-utils/testing.md
+                  - "testing.fakes": reference/web-ui-utils/testing-fakes.md
+                  - "ui": reference/web-ui-utils/ui.md
+                  - "ui.components": reference/web-ui-utils/ui-components.md
+                  - "ui.css": reference/web-ui-utils/ui-css.md
+                  - "ui.forms": reference/web-ui-utils/ui-forms.md
+                  - "ui.layout": reference/web-ui-utils/ui-layout.md
+                  - "ui.pages": reference/web-ui-utils/ui-pages.md
+                  - "utils": reference/web-ui-utils/utils.md
             - Learning projects:
               - learning/index.md
               - Marketplace:
@@ -372,7 +454,7 @@ plugins:
       handlers:
         python:
           options:
-            show_source: true
+            show_source: false
             show_root_heading: true
             show_root_full_path: false
             show_object_full_path: false
@@ -582,13 +664,94 @@ nav:
   - Referência:
       - reference.md
       - "Superfície de topo": reference/top.md
-      - "Admin, dados e API": reference/admin-data-api.md
-      - "Documentos e arquivos": reference/documents-files.md
-      - "Geração de cliente OpenAPI": reference/openapi.md
-      - "IA e visão computacional": reference/ai-vision.md
-      - "Integrações e pagamentos": reference/integrations-payments.md
-      - "Tempo real e mensageria": reference/realtime-messaging.md
-      - "Web, UI e utilitários": reference/web-ui-utils.md
+      - "Admin, dados e API":
+          - "Índice": reference/admin-data-api.md
+          - "admin": reference/admin-data-api/admin.md
+          - "admin.sql_shell": reference/admin-data-api/admin-sql-shell.md
+          - "admin.storage": reference/admin-data-api/admin-storage.md
+          - "admin.tasks": reference/admin-data-api/admin-tasks.md
+          - "api": reference/admin-data-api/api.md
+          - "auth": reference/admin-data-api/auth.md
+          - "authz": reference/admin-data-api/authz.md
+          - "cache": reference/admin-data-api/cache.md
+          - "core": reference/admin-data-api/core.md
+          - "db": reference/admin-data-api/db.md
+          - "exceptions": reference/admin-data-api/exceptions.md
+          - "schemas": reference/admin-data-api/schemas.md
+          - "services, controllers": reference/admin-data-api/services-controllers.md
+          - "sessions": reference/admin-data-api/sessions.md
+          - "settings": reference/admin-data-api/settings.md
+      - "Documentos e arquivos":
+          - "Índice": reference/documents-files.md
+          - "artifacts": reference/documents-files/artifacts.md
+          - "pdf": reference/documents-files/pdf.md
+          - "privacy": reference/documents-files/privacy.md
+          - "share": reference/documents-files/share.md
+          - "slides": reference/documents-files/slides.md
+          - "spreadsheet": reference/documents-files/spreadsheet.md
+          - "storage": reference/documents-files/storage.md
+      - "Geração de cliente OpenAPI":
+          - "Índice": reference/openapi.md
+          - "asyncapi": reference/openapi/asyncapi.md
+          - "openapi": reference/openapi/openapi.md
+      - "IA e visão computacional":
+          - "Índice": reference/ai-vision.md
+          - "agents": reference/ai-vision/agents.md
+          - "faces": reference/ai-vision/faces.md
+          - "genai": reference/ai-vision/genai.md
+          - "genai.audio": reference/ai-vision/genai-audio.md
+          - "genai.hub": reference/ai-vision/genai-hub.md
+          - "genai.image": reference/ai-vision/genai-image.md
+          - "genai.inventory": reference/ai-vision/genai-inventory.md
+          - "genai.rag": reference/ai-vision/genai-rag.md
+          - "modelops": reference/ai-vision/modelops.md
+          - "text": reference/ai-vision/text.md
+          - "vision": reference/ai-vision/vision.md
+      - "Integrações e pagamentos":
+          - "Índice": reference/integrations-payments.md
+          - "app_errors": reference/integrations-payments/app-errors.md
+          - "integrations.messaging.zap": reference/integrations-payments/integrations-messaging-zap.md
+          - "integrations.messaging.zap.inbox": reference/integrations-payments/integrations-messaging-zap-inbox.md
+          - "integrations.messaging.zap.router": reference/integrations-payments/integrations-messaging-zap-router.md
+          - "integrations.payment.adapters": reference/integrations-payments/integrations-payment-adapters.md
+          - "integrations.payment.base": reference/integrations-payments/integrations-payment-base.md
+          - "integrations.payment.mercado_pago": reference/integrations-payments/integrations-payment-mercado-pago.md
+          - "integrations.payment.openpix": reference/integrations-payments/integrations-payment-openpix.md
+          - "integrations.payment.routing": reference/integrations-payments/integrations-payment-routing.md
+          - "integrations.payment.settlement": reference/integrations-payments/integrations-payment-settlement.md
+          - "integrations.payment.stripe": reference/integrations-payments/integrations-payment-stripe.md
+          - "integrations.storage.google_drive": reference/integrations-payments/integrations-storage-google-drive.md
+          - "integrations.subscriptions.revenuecat": reference/integrations-payments/integrations-subscriptions-revenuecat.md
+          - "wallet": reference/integrations-payments/wallet.md
+      - "Tempo real e mensageria":
+          - "Índice": reference/realtime-messaging.md
+          - "chat": reference/realtime-messaging/chat.md
+          - "eventsourcing": reference/realtime-messaging/eventsourcing.md
+          - "flags": reference/realtime-messaging/flags.md
+          - "mcp": reference/realtime-messaging/mcp.md
+          - "push": reference/realtime-messaging/push.md
+          - "queue": reference/realtime-messaging/queue.md
+          - "reviews": reference/realtime-messaging/reviews.md
+          - "rooms": reference/realtime-messaging/rooms.md
+          - "sse": reference/realtime-messaging/sse.md
+          - "tasks": reference/realtime-messaging/tasks.md
+          - "webpush": reference/realtime-messaging/webpush.md
+          - "websockets": reference/realtime-messaging/websockets.md
+      - "Web, UI e utilitários":
+          - "Índice": reference/web-ui-utils.md
+          - "checks": reference/web-ui-utils/checks.md
+          - "geo": reference/web-ui-utils/geo.md
+          - "hostbridge": reference/web-ui-utils/hostbridge.md
+          - "ssr": reference/web-ui-utils/ssr.md
+          - "testing": reference/web-ui-utils/testing.md
+          - "testing.fakes": reference/web-ui-utils/testing-fakes.md
+          - "ui": reference/web-ui-utils/ui.md
+          - "ui.components": reference/web-ui-utils/ui-components.md
+          - "ui.css": reference/web-ui-utils/ui-css.md
+          - "ui.forms": reference/web-ui-utils/ui-forms.md
+          - "ui.layout": reference/web-ui-utils/ui-layout.md
+          - "ui.pages": reference/web-ui-utils/ui-pages.md
+          - "utils": reference/web-ui-utils/utils.md
   - Projetos de aprendizado:
       - learning/index.md
       - Marketplace:
