@@ -28,6 +28,7 @@ from tempest_fastapi_sdk.exceptions.image import (
     ImageTooLargeException,
     ImageTypeMismatchException,
 )
+from tempest_fastapi_sdk.utils._image_decode import ImageStream
 from tempest_fastapi_sdk.utils.media_types import ImageMediaTypeEnum
 
 if TYPE_CHECKING:
@@ -289,8 +290,9 @@ def strip_image_metadata(
             "Install with `pip install tempest-fastapi-sdk[image]`."
         ) from exc
     pillow_format = _PILLOW_FORMATS[declared]
+    stream = ImageStream(data)
     try:
-        source = Image.open(io.BytesIO(data), formats=list(_PILLOW_FORMATS.values()))
+        source = Image.open(stream, formats=list(_PILLOW_FORMATS.values()))
     except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
         raise ImageTooLargeException(details={"max_pixels": max_pixels}) from exc
     except _DECODE_ERRORS as exc:
@@ -309,7 +311,7 @@ def strip_image_metadata(
                 details={"width": width, "height": height, "max_pixels": max_pixels}
             )
         try:
-            source.load()
+            stream.load(source)
             ImageOps.exif_transpose(source, in_place=True)
         except _DECODE_ERRORS as exc:
             raise ImageDecodeException(details={"declared": declared.value}) from exc

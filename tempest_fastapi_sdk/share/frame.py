@@ -25,6 +25,7 @@ from tempest_fastapi_sdk.share.qr import (
     qr_image,
 )
 from tempest_fastapi_sdk.share.schemas import ShareFrameLayoutEnum, ShareFrameSchema
+from tempest_fastapi_sdk.utils._image_decode import ImageStream
 
 if TYPE_CHECKING:
     from PIL.Image import Image as PillowImage
@@ -174,9 +175,11 @@ class ShareFrameRenderer(_BrandRenderer):
         inner = diameter - 2 * ring
         if photo is not None:
             try:
-                with Image.open(io.BytesIO(photo)) as source:
+                stream = ImageStream(photo)
+                with Image.open(stream) as source:
                     if source.width * source.height > MAX_PHOTO_PIXELS:
                         raise ValueError("photo is larger than MAX_PHOTO_PIXELS")
+                    stream.load(source)
                     picture = ImageOps.exif_transpose(source).convert("RGB")
             except (OSError, Image.DecompressionBombError) as exc:
                 raise ValueError(f"photo is not a decodable image: {exc}") from exc

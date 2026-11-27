@@ -27,6 +27,8 @@ import io
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from tempest_fastapi_sdk.utils._image_decode import ImageStream
+
 if TYPE_CHECKING:
     from PIL.Image import Image as PillowImage
 
@@ -76,9 +78,11 @@ def decode_logo(logo: bytes | Path) -> "PillowImage":
 
     data = logo.read_bytes() if isinstance(logo, Path) else logo
     try:
-        with Image.open(io.BytesIO(data)) as source:
+        stream = ImageStream(data)
+        with Image.open(stream) as source:
             if source.width * source.height > MAX_QR_LOGO_PIXELS:
                 raise ValueError("logo is larger than MAX_QR_LOGO_PIXELS")
+            stream.load(source)
             return source.convert("RGBA")
     except (OSError, Image.DecompressionBombError) as exc:
         raise ValueError(f"logo is not a decodable image: {exc}") from exc

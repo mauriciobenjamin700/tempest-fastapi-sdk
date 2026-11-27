@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tempest_fastapi_sdk.share.schemas import ShareCardSchema
+from tempest_fastapi_sdk.utils._image_decode import ImageStream
 
 if TYPE_CHECKING:
     from PIL.Image import Image as PillowImage
@@ -198,9 +199,11 @@ class _BrandRenderer:
         self._logo_source: PillowImage | None = None
         if logo_bytes is not None:
             try:
-                with Image.open(io.BytesIO(logo_bytes)) as source:
+                stream = ImageStream(logo_bytes)
+                with Image.open(stream) as source:
                     if source.width * source.height > MAX_LOGO_PIXELS:
                         raise ValueError("logo is larger than MAX_LOGO_PIXELS")
+                    stream.load(source)
                     image = source.convert("RGBA")
             except (OSError, Image.DecompressionBombError) as exc:
                 raise ValueError(f"logo is not a decodable image: {exc}") from exc

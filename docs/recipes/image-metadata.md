@@ -216,6 +216,18 @@ transforma em resposta com `code`:
 `FileTooLargeException`: um `except` que já pegava esses dois continua
 pegando.
 
+!!! note "Imagem truncada é recusada mesmo com o `[pdf]` instalado"
+    `import weasyprint` (o extra `[pdf]`, importado na primeira renderização)
+    liga `PIL.ImageFile.LOAD_TRUNCATED_IMAGES`, uma chave global do Pillow.
+    Com ela ligada o Pillow preenche de cinza o que falta de um arquivo
+    cortado em vez de levantar — e até a 0.373.0 a função aceitava metade de
+    um PNG depois do primeiro PDF do serviço. Hoje a função não lê nem
+    escreve essa chave: ela percebe que o decoder pediu bytes além do fim do
+    arquivo e levanta `ImageDecodeException`, com a chave ligada ou
+    desligada. Um PNG a que faltam só os últimos bytes depois dos pixels (o
+    checksum final e o `IEND`) também é recusado, embora o Pillow sozinho o
+    aceite.
+
 ## O teto de pixels
 
 Um PNG de poucos KB pode declarar 20 000 x 20 000 pixels. Decodificado, vira

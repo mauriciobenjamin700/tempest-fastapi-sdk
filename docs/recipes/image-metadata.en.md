@@ -216,6 +216,17 @@ them into a response with a `code`:
 `FileTooLargeException`: an `except` that already caught those two keeps
 catching.
 
+!!! note "A truncated image is refused even with `[pdf]` installed"
+    `import weasyprint` (the `[pdf]` extra, imported on the first render)
+    turns on `PIL.ImageFile.LOAD_TRUNCATED_IMAGES`, a Pillow global switch.
+    With it on, Pillow fills the missing part of a cut file with gray instead
+    of raising — and up to 0.373.0 the function accepted half a PNG after the
+    service's first PDF. The function now neither reads nor writes that
+    switch: it notices the decoder asking for bytes past the end of the file
+    and raises `ImageDecodeException`, with the switch on or off. A PNG
+    missing only the last bytes after its pixels (the final checksum and
+    `IEND`) is refused too, although Pillow alone accepts it.
+
 ## The pixel ceiling
 
 A PNG of a few KB can declare 20 000 x 20 000 pixels. Decoded, it turns into

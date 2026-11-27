@@ -246,7 +246,7 @@ the upload size, `422` for the rest:
 | --- | --- | --- |
 | `max_upload_bytes` | `DEFAULT_MAX_IMAGE_UPLOAD_BYTES` (20 MiB) | an upload that is too large — read in chunks, refused when it crosses the ceiling |
 | `max_image_pixels` | `DEFAULT_MAX_IMAGE_PIXELS` (50 MP) | a canvas declared in the header above the ceiling — read without decoding |
-| — | — | bytes that are not an image, and `ort-vision-sdk`'s `ImageLoadError` (which used to become a `500`) |
+| — | — | bytes that are not an image, a truncated image — the pixels are decoded in a thread before the model runs —, and `ort-vision-sdk`'s `ImageLoadError` (which used to become a `500`) |
 
 ```python
 from fastapi import FastAPI
@@ -271,8 +271,15 @@ app.include_router(
     89.48 MP threshold. The byte ceiling does not catch that file; the pixel
     ceiling does, from the header alone.
 
-`max_image_pixels=None` turns the header check off (and the Pillow import),
-leaving only Pillow's own guard inside the decoder.
+`max_image_pixels=None` turns the header and truncation checks off (and the
+Pillow import), leaving only Pillow's own guard inside the decoder.
+
+!!! warning "Without the check, a truncated image reaches the model when `[pdf]` is installed"
+    `import weasyprint` turns on `PIL.ImageFile.LOAD_TRUNCATED_IMAGES`, and
+    with it `ort-vision-sdk` decodes half an image with the rest in gray.
+    With `max_image_pixels` set, the router decodes the pixels first and
+    answers `422`, switch on or off. The cost is one extra decode: measured
+    on a 12 MP JPEG, about 70 ms, against `ort-vision-sdk`'s own 107 ms.
 
 ## Recap
 

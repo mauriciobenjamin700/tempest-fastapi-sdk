@@ -99,6 +99,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `lfm2.5-thinking:1.2b` 56,6 → 74,3, `qwen2.5-coder:14b` 90,0 → 95,7,
   `ministral-3:14b` 84,4 → 89,9.
 
+### Fixed
+
+- **Serviço com o extra `[pdf]` aceitava imagem truncada depois do primeiro
+  PDF** (#868). `import weasyprint` (feito na primeira renderização do
+  `PdfRenderer`) liga `PIL.ImageFile.LOAD_TRUNCATED_IMAGES`, chave global do
+  Pillow — medido no piso declarado (`weasyprint` 69.0) e no lock (70.0),
+  com Pillow 13.0.0. Com ela ligada, `strip_image_metadata` re-codificava
+  e devolvia a primeira metade de um PNG em vez de levantar
+  `ImageDecodeException` (`422`), e o mesmo acontecia com PNG, JPEG, GIF e
+  BMP cortados em todo caminho do SDK que decodifica imagem do usuário: o
+  logo do QR (`share.decode_logo`) e do `ShareCardRenderer`, a foto do
+  `ShareFrameRenderer`, a imagem do `FaceRecognizer`, a fonte de imagem do
+  `ImageGenerator` e do `VisionTextGenerator`, e o upload do
+  `make_vision_router` (decodificado pelo `ort-vision-sdk`). WebP cortado já
+  era recusado com a chave ligada.
+  - O SDK não lê nem escreve a chave: os bytes passam por um stream que
+    registra se o decoder pediu bytes além do fim, e isso levanta o mesmo
+    `OSError` que o Pillow levanta com a chave desligada. Sem lock e sem
+    estado global, então uma renderização de PDF em outra thread continua
+    tolerando imagem quebrada no HTML, como o WeasyPrint pretende.
+  - Medido em todo ponto de corte de 18 codificações (PNG em seis modos,
+    APNG, JPEG baseline/progressivo/CMYK/cinza, GIF estático e animado, BMP
+    e BMP RLE, WebP lossy/lossless/animado; 150 619 cortes), com a chave
+    ligada: nenhum corte que o Pillow recusa com a chave desligada passou, e
+    toda imagem completa passou. É mais estrito num caso: PNG a que faltam
+    só os bytes depois dos pixels (o último checksum e o `IEND`, até cerca
+    de 22 bytes), que o Pillow sozinho aceita.
+  - `FaceRecognizer` e os `_load_image` do `genai` passam a decodificar a
+    imagem na hora (antes o `Image.open` era preguiçoso e o decode acontecia
+    dentro do pipeline), e uma fonte por caminho é lida para a memória, sem
+    handle de arquivo aberto.
+  - `make_vision_router` decodifica os pixels numa thread antes de chamar o
+    modelo, depois da checagem de pixels do header: uma decodificação a
+    mais, medida em cerca de 70 ms num JPEG de 12 MP (a do `ort-vision-sdk`
+    levou 107 ms). Com `max_image_pixels=None` as duas checagens continuam
+    desligadas.
+  - Restaurar a chave depois de importar o WeasyPrint foi medido e
+    descartado: com ela desligada, `HTML(...).write_pdf()` com um PNG
+    truncado embutido levanta `OSError: image file is truncated` em vez de
+    gerar o PDF (o JPEG truncado gera nos dois casos), no 69.0 e no 70.0.
+  - `TestRefusals::test_truncated_image` e
+    `TestCorruptContent::test_is_a_decode_error[middle-PNG-image/png]`
+    falhavam quando o mesmo worker do xdist já tinha importado o WeasyPrint.
+    Rodando `tests/pdf` e depois `tests/utils/test_images.py` num processo
+    só: 2 falhas em 201 antes, 201 de 201 agora.
 
 ## [0.373.0] — 2026-11-26
 
