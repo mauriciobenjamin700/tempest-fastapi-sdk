@@ -2539,13 +2539,63 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#step-1-create-the-service-account-and-enable-the-drive-api" class="md-nav__link">
+  <a href="#step-1-get-the-service-account-and-its-json-key" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Step 1 — Create the service account and enable the Drive API
+        Step 1 — Get the service account and its JSON key
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Step 1 — Get the service account and its JSON key">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-a-google-cloud-project" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1 — A Google Cloud project
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-enable-the-google-drive-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2 — Enable the Google Drive API
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-create-the-service-account" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.3 — Create the service account
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-generate-the-json-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.4 — Generate the JSON key
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2557,6 +2607,56 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Step 2 — Share the folder with the client_email">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#shared-drive-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shared Drive (recommended)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#regular-folder-my-drive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Regular folder (My Drive)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-ids-that-go-into-the-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The IDs that go into the settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-before-wiring-the-service" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check before wiring the service
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -5844,42 +5944,113 @@ does not change at all: only the object passed as <code>backend=</code>.</p>
 already in the base package). There is no <code>google-api-python-client</code> and no
 <code>google-auth</code>: a service account's token exchange is one signed JWT and one
 POST, and the SDK does it itself.</p>
-<h2 id="step-1-create-the-service-account-and-enable-the-drive-api">Step 1 — Create the service account and enable the Drive API<a class="headerlink" href="#step-1-create-the-service-account-and-enable-the-drive-api" title="Permanent link">&para;</a></h2>
-<p>In the <a href="https://console.cloud.google.com/">Google Cloud console</a>:</p>
+<h2 id="step-1-get-the-service-account-and-its-json-key">Step 1 — Get the service account and its JSON key<a class="headerlink" href="#step-1-get-the-service-account-and-its-json-key" title="Permanent link">&para;</a></h2>
+<p>You leave this step with a JSON file — the service account's credential. You
+can do it in the console (clicking) or with <code>gcloud</code> (copying commands); pick
+one.</p>
+<div class="admonition tip">
+<p class="admonition-title">Menu names change</p>
+<p>The Google Cloud console renames and reorganizes menus from time to
+time. If a name below does not match the screen, follow the official
+guides: <a href="https://cloud.google.com/iam/docs/service-accounts-create">Create service accounts</a>
+and <a href="https://cloud.google.com/iam/docs/keys-create-delete">Create and delete service account keys</a>.</p>
+</div>
+<h3 id="11-a-google-cloud-project">1.1 — A Google Cloud project<a class="headerlink" href="#11-a-google-cloud-project" title="Permanent link">&para;</a></h3>
+<p>The service account lives inside a Google Cloud project. Sign in to the
+<a href="https://console.cloud.google.com/">console</a> with the company's Google account
+and, in the project picker at the top of the page, choose an existing project
+or click <strong>New project</strong>. Write down the <strong>project ID</strong> (e.g.
+<code>my-company-uploads</code>).</p>
+<h3 id="12-enable-the-google-drive-api">1.2 — Enable the Google Drive API<a class="headerlink" href="#12-enable-the-google-drive-api" title="Permanent link">&para;</a></h3>
+<p>Without it, every call to the Drive API is refused. Under <strong>APIs &amp; Services →
+Library</strong>, search for <strong>Google Drive API</strong> and click <strong>Enable</strong>.</p>
+<h3 id="13-create-the-service-account">1.3 — Create the service account<a class="headerlink" href="#13-create-the-service-account" title="Permanent link">&para;</a></h3>
+<p>Under <strong>IAM &amp; Admin → Service accounts</strong>, click <strong>Create service account</strong>:</p>
 <ol>
-<li>Pick (or create) a project.</li>
-<li>Under <strong>APIs &amp; Services → Library</strong>, enable the <strong>Google Drive API</strong>.</li>
-<li>Under <strong>IAM &amp; Admin → Service accounts</strong>, create a service account.</li>
-<li>On that account, <strong>Keys → Add key → JSON</strong>. The browser downloads a file
-   like this (values shortened):</li>
+<li>Give it a name (e.g. <code>uploader</code>). The console suggests the <strong>ID</strong> and
+   shows the e-mail the account will have:
+   <code>uploader@my-company-uploads.iam.gserviceaccount.com</code>.</li>
+<li>At the roles step, <strong>grant none</strong> and finish. The account needs no IAM
+   role on the project to use Drive: access to files comes from <strong>sharing</strong>
+   the folder (Step 2), not from IAM.</li>
 </ol>
+<h3 id="14-generate-the-json-key">1.4 — Generate the JSON key<a class="headerlink" href="#14-generate-the-json-key" title="Permanent link">&para;</a></h3>
+<p>Open the account, go to the <strong>Keys → Add key → Create new key</strong> tab, choose
+<strong>JSON</strong> and confirm. The browser downloads a file like this (values
+shortened):</p>
 <div class="language-json highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"service_account"</span><span class="p">,</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">"project_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"my-company"</span><span class="p">,</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">"project_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"my-company-uploads"</span><span class="p">,</span>
 </span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">"private_key_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"3f2a…"</span><span class="p">,</span>
 </span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="nt">"private_key"</span><span class="p">:</span><span class="w"> </span><span class="s2">"-----BEGIN PRIVATE KEY-----\n…\n-----END PRIVATE KEY-----\n"</span><span class="p">,</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">"client_email"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uploader@my-company.iam.gserviceaccount.com"</span><span class="p">,</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">"client_email"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uploader@my-company-uploads.iam.gserviceaccount.com"</span><span class="p">,</span>
 </span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="nt">"token_uri"</span><span class="p">:</span><span class="w"> </span><span class="s2">"https://oauth2.googleapis.com/token"</span>
 </span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="p">}</span>
 </span></code></pre></div>
+<p>The two things the recipe uses are the <code>client_email</code> (you need it in Step 2)
+and the whole file (it goes into the settings in Step 3).</p>
+<div class="admonition warning">
+<p class="admonition-title">Key creation blocked by the organization</p>
+<p>If creating the key fails with an organization-policy message, your
+Google Cloud organization blocks service-account keys (the
+<code>iam.disableServiceAccountKeyCreation</code> constraint). Whoever administers
+the organization can grant an exception for this project; there is no
+way around it on the SDK side, which authenticates precisely with the
+key.</p>
+</div>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:1"><input checked="checked" id="with-gcloud" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="with-gcloud">With gcloud</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<p>The whole step, for those with the <a href="https://cloud.google.com/sdk/docs/install">gcloud CLI</a>
+installed and signed in (<code>gcloud auth login</code>):</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>gcloud<span class="w"> </span>projects<span class="w"> </span>create<span class="w"> </span>my-company-uploads
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>gcloud<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>project<span class="w"> </span>my-company-uploads
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>gcloud<span class="w"> </span>services<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>drive.googleapis.com
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>gcloud<span class="w"> </span>iam<span class="w"> </span>service-accounts<span class="w"> </span>create<span class="w"> </span>uploader<span class="w"> </span>--display-name<span class="o">=</span><span class="s2">"Service uploads"</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>gcloud<span class="w"> </span>iam<span class="w"> </span>service-accounts<span class="w"> </span>keys<span class="w"> </span>create<span class="w"> </span>drive-sa.json<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span>--iam-account<span class="o">=</span>uploader@my-company-uploads.iam.gserviceaccount.com
+</span></code></pre></div>
+<p>The last command writes the key to <code>drive-sa.json</code> in the current
+directory.</p>
+</div>
+</div>
+</div>
 <div class="admonition warning">
 <p class="admonition-title">That file is a password</p>
 <p>Whoever holds the JSON acts as the service account. Keep it in your
-deployment's secret manager, never in the repository. The SDK never
-writes the key, the signed JWT or the access token to a log or an error
-message, and the credentials' <code>repr</code> hides the private key.</p>
+deployment's secret manager, never in the repository — if it sits in the
+project folder during development, add its name to <code>.gitignore</code>. If it
+leaks, delete the key in the account's <strong>Keys</strong> tab and generate a new
+one. The SDK never writes the key, the signed JWT or the access token to
+a log or an error message, and the credentials' <code>repr</code> hides the private
+key.</p>
 </div>
 <h2 id="step-2-share-the-folder-with-the-client_email">Step 2 — Share the folder with the <code>client_email</code><a class="headerlink" href="#step-2-share-the-folder-with-the-client_email" title="Permanent link">&para;</a></h2>
-<p>The service account only sees what is shared with it. Take the
-<code>client_email</code> from the JSON and:</p>
-<ul>
-<li><strong>Shared Drive (recommended):</strong> add the account as a member of the Shared
-  Drive, with the <strong>Content manager</strong> role (or higher — <code>delete</code> removes
-  files).</li>
-<li><strong>Regular folder:</strong> share the folder with the account as <strong>Editor</strong>.</li>
-</ul>
-<p>The <strong>folder id</strong> is the last segment of its URL:
-<code>https://drive.google.com/drive/folders/</code><strong><code>1AbCdEfGhIjKlMnOp</code></strong>.</p>
+<p>The service account is an account like any other in Drive: it only sees what
+is shared with it. Take the <code>client_email</code> from the JSON and choose where the
+files will live.</p>
+<h3 id="shared-drive-recommended">Shared Drive (recommended)<a class="headerlink" href="#shared-drive-recommended" title="Permanent link">&para;</a></h3>
+<p>Shared Drives exist on <strong>Google Workspace</strong> accounts; a personal Gmail account
+has none. In <a href="https://drive.google.com/">Google Drive</a>:</p>
+<ol>
+<li>Under <strong>Shared drives</strong>, create one (or open an existing one).</li>
+<li>Click the drive name → <strong>Manage members</strong>, paste the <code>client_email</code> and
+   give it the <strong>Content manager</strong> role (or higher — the backend's <code>delete</code>
+   removes files, and roles below that cannot).</li>
+<li>Optional: create a folder inside the drive for the uploads.</li>
+</ol>
+<h3 id="regular-folder-my-drive">Regular folder (My Drive)<a class="headerlink" href="#regular-folder-my-drive" title="Permanent link">&para;</a></h3>
+<p>Right-click the folder → <strong>Share</strong>, paste the <code>client_email</code> and give it the
+<strong>Editor</strong> role. Read the "Why a Shared Drive" note below before choosing
+this path.</p>
+<h3 id="the-ids-that-go-into-the-settings">The IDs that go into the settings<a class="headerlink" href="#the-ids-that-go-into-the-settings" title="Permanent link">&para;</a></h3>
+<p>Open the folder in the browser. The <strong>folder id</strong> is the last segment of the
+URL: <code>https://drive.google.com/drive/folders/</code><strong><code>1AbCdEfGhIjKlMnOp</code></strong> — that is
+<code>GOOGLE_DRIVE_FOLDER_ID</code>.</p>
+<p>If the folder is in a Shared Drive, open the drive's <strong>root</strong>: the last
+segment of its URL is the drive id (<code>GOOGLE_DRIVE_DRIVE_ID</code>, optional — it
+restricts searches to that drive). If you write straight into the Shared
+Drive's root, the same value is also the folder id.</p>
 <div class="admonition info">
 <p class="admonition-title">Why a Shared Drive</p>
 <p>A file the service account uploads into a person's <strong>My Drive</strong> folder
@@ -5892,6 +6063,76 @@ repository (there is no real credential here); read
 before deciding. Every SDK call to the Drive API sends
 <code>supportsAllDrives=true</code>, so both shapes work on the client side.</p>
 </div>
+<h3 id="check-before-wiring-the-service">Check before wiring the service<a class="headerlink" href="#check-before-wiring-the-service" title="Permanent link">&para;</a></h3>
+<p>A one-minute script proves the key and the sharing are right: it writes a
+test file into the folder and deletes it.</p>
+<div class="language-python highlight"><span class="filename">check_drive.py</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncIterator</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.integrations.storage.google_drive</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">GoogleDriveUploadStorage</span><span class="p">,</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="p">)</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">UploadResult</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="n">PROBE_KEY</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"tempest-credentials-check.txt"</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">probe_bytes</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">AsyncIterator</span><span class="p">[</span><span class="nb">bytes</span><span class="p">]:</span>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="w">    </span><span class="sd">"""Yield the tiny payload of the check file."""</span>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>    <span class="k">yield</span> <span class="sa">b</span><span class="s2">"tempest credentials check"</span>
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="w">    </span><span class="sd">"""Upload and delete a probe file to prove the key and the sharing."""</span>
+</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>    <span class="n">storage</span><span class="p">:</span> <span class="n">GoogleDriveUploadStorage</span> <span class="o">=</span> <span class="n">GoogleDriveUploadStorage</span><span class="o">.</span><span class="n">from_service_account</span><span class="p">(</span>
+</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>        <span class="n">folder_id</span><span class="o">=</span><span class="s2">"1AbCdEfGhIjKlMnOp"</span><span class="p">,</span>
+</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>        <span class="n">credentials_path</span><span class="o">=</span><span class="s2">"drive-sa.json"</span><span class="p">,</span>
+</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>    <span class="p">)</span>
+</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>    <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>        <span class="n">result</span><span class="p">:</span> <span class="n">UploadResult</span> <span class="o">=</span> <span class="k">await</span> <span class="n">storage</span><span class="o">.</span><span class="n">write_stream</span><span class="p">(</span>
+</span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>            <span class="n">PROBE_KEY</span><span class="p">,</span> <span class="n">probe_bytes</span><span class="p">(),</span> <span class="n">content_type</span><span class="o">=</span><span class="s2">"text/plain"</span>
+</span><span id="__span-3-26"><a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a>        <span class="p">)</span>
+</span><span id="__span-3-27"><a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">"upload ok:"</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">url</span><span class="p">)</span>
+</span><span id="__span-3-28"><a id="__codelineno-3-28" name="__codelineno-3-28" href="#__codelineno-3-28"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">"deleted:"</span><span class="p">,</span> <span class="k">await</span> <span class="n">storage</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">PROBE_KEY</span><span class="p">))</span>
+</span><span id="__span-3-29"><a id="__codelineno-3-29" name="__codelineno-3-29" href="#__codelineno-3-29"></a>    <span class="k">finally</span><span class="p">:</span>
+</span><span id="__span-3-30"><a id="__codelineno-3-30" name="__codelineno-3-30" href="#__codelineno-3-30"></a>        <span class="k">await</span> <span class="n">storage</span><span class="o">.</span><span class="n">aclose</span><span class="p">()</span>
+</span><span id="__span-3-31"><a id="__codelineno-3-31" name="__codelineno-3-31" href="#__codelineno-3-31"></a>
+</span><span id="__span-3-32"><a id="__codelineno-3-32" name="__codelineno-3-32" href="#__codelineno-3-32"></a>
+</span><span id="__span-3-33"><a id="__codelineno-3-33" name="__codelineno-3-33" href="#__codelineno-3-33"></a><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+</span><span id="__span-3-34"><a id="__codelineno-3-34" name="__codelineno-3-34" href="#__codelineno-3-34"></a>    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span></code></pre></div>
+<p>On success it prints the file link and <code>deleted: True</code>. On failure the
+exception says what is missing:</p>
+<table>
+<thead>
+<tr>
+<th>Exception</th>
+<th>What it means</th>
+<th>What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GoogleDriveException</code> with <code>reason</code> <code>invalid_private_key</code></td>
+<td>the JSON's <code>private_key</code> is not a valid PEM RSA key (file edited, truncated or pasted with the wrong line breaks)</td>
+<td>download the key again (Step 1.4)</td>
+</tr>
+<tr>
+<td><code>GoogleDriveFolderNotFoundException</code></td>
+<td>Drive answered <code>404</code> for the folder: wrong id, or the folder is not shared with the <code>client_email</code> (the message names the e-mail)</td>
+<td>check the id in the URL and the sharing (Step 2)</td>
+</tr>
+<tr>
+<td><code>GoogleDriveException</code> with another <code>reason</code></td>
+<td>Drive refused the call for another reason (API not enabled, role without permission, quota) — <code>details</code> carries the <code>status</code> and <code>reason</code> Google sent</td>
+<td>read the <code>reason</code> and go back to the matching step</td>
+</tr>
+</tbody>
+</table>
+<p>The exceptions and the mapping are the SDK's and are covered by the test
+suite; <strong>which</strong> status Google returns in each case (for instance <code>404</code> for
+an unshared folder) is what the <a href="https://developers.google.com/workspace/drive/api/guides/handle-errors">error-handling guide</a>
+describes, and was not measured against Google in this repository.</p>
 <h2 id="step-3-configure-the-settings">Step 3 — Configure the settings<a class="headerlink" href="#step-3-configure-the-settings" title="Permanent link">&para;</a></h2>
 <p>Compose the <code>GoogleDriveSettings</code> mixin:</p>
 <table>
@@ -5920,8 +6161,8 @@ before deciding. Every SDK call to the Drive API sends
 </tr>
 </tbody>
 </table>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nv">GOOGLE_DRIVE_CREDENTIALS_PATH</span><span class="o">=</span>/run/secrets/drive-sa.json
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nv">GOOGLE_DRIVE_FOLDER_ID</span><span class="o">=</span>1AbCdEfGhIjKlMnOp
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nv">GOOGLE_DRIVE_CREDENTIALS_PATH</span><span class="o">=</span>/run/secrets/drive-sa.json
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nv">GOOGLE_DRIVE_FOLDER_ID</span><span class="o">=</span>1AbCdEfGhIjKlMnOp
 </span></code></pre></div>
 <p><code>settings.google_drive_kwargs()</code> returns a <code>GoogleDriveStorageKwargs</code>
 (<code>TypedDict</code>) ready to splat into
@@ -5929,54 +6170,54 @@ before deciding. Every SDK call to the Drive API sends
 checks the splat against the signature.</p>
 <h2 id="step-4-plug-it-into-uploadutils">Step 4 — Plug it into <code>UploadUtils</code><a class="headerlink" href="#step-4-plug-it-into-uploadutils" title="Permanent link">&para;</a></h2>
 <p>A complete service:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncIterator</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">asynccontextmanager</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span><span class="p">,</span> <span class="n">UploadFile</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">UploadUtils</span>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.integrations.storage.google_drive</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="n">GoogleDriveUploadStorage</span><span class="p">,</span>
-</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="p">)</span>
-</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.settings</span><span class="w"> </span><span class="kn">import</span> <span class="n">GoogleDriveSettings</span>
-</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>
-</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>
-</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="k">class</span><span class="w"> </span><span class="nc">Settings</span><span class="p">(</span><span class="n">GoogleDriveSettings</span><span class="p">):</span>
-</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="w">    </span><span class="sd">"""Service settings: only Google Drive, in this example."""</span>
-</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>
-</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>
-</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="n">settings</span><span class="p">:</span> <span class="n">Settings</span> <span class="o">=</span> <span class="n">Settings</span><span class="p">()</span>
-</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="n">storage</span><span class="p">:</span> <span class="n">GoogleDriveUploadStorage</span> <span class="o">=</span> <span class="n">GoogleDriveUploadStorage</span><span class="o">.</span><span class="n">from_service_account</span><span class="p">(</span>
-</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>    <span class="o">**</span><span class="n">settings</span><span class="o">.</span><span class="n">google_drive_kwargs</span><span class="p">()</span>
-</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="p">)</span>
-</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a><span class="n">uploads</span><span class="p">:</span> <span class="n">UploadUtils</span> <span class="o">=</span> <span class="n">UploadUtils</span><span class="p">(</span>
-</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>    <span class="n">backend</span><span class="o">=</span><span class="n">storage</span><span class="p">,</span>
-</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>    <span class="n">max_size_bytes</span><span class="o">=</span><span class="mi">20</span> <span class="o">*</span> <span class="mi">1024</span> <span class="o">*</span> <span class="mi">1024</span><span class="p">,</span>
-</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>    <span class="n">allowed_extensions</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">,</span> <span class="s2">"png"</span><span class="p">,</span> <span class="s2">"jpg"</span><span class="p">},</span>
-</span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a><span class="p">)</span>
-</span><span id="__span-3-26"><a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a>
-</span><span id="__span-3-27"><a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a>
-</span><span id="__span-3-28"><a id="__codelineno-3-28" name="__codelineno-3-28" href="#__codelineno-3-28"></a><span class="nd">@asynccontextmanager</span>
-</span><span id="__span-3-29"><a id="__codelineno-3-29" name="__codelineno-3-29" href="#__codelineno-3-29"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">lifespan</span><span class="p">(</span><span class="n">app</span><span class="p">:</span> <span class="n">FastAPI</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AsyncIterator</span><span class="p">[</span><span class="kc">None</span><span class="p">]:</span>
-</span><span id="__span-3-30"><a id="__codelineno-3-30" name="__codelineno-3-30" href="#__codelineno-3-30"></a><span class="w">    </span><span class="sd">"""Close the HTTP client the backend created."""</span>
-</span><span id="__span-3-31"><a id="__codelineno-3-31" name="__codelineno-3-31" href="#__codelineno-3-31"></a>    <span class="k">yield</span>
-</span><span id="__span-3-32"><a id="__codelineno-3-32" name="__codelineno-3-32" href="#__codelineno-3-32"></a>    <span class="k">await</span> <span class="n">storage</span><span class="o">.</span><span class="n">aclose</span><span class="p">()</span>
-</span><span id="__span-3-33"><a id="__codelineno-3-33" name="__codelineno-3-33" href="#__codelineno-3-33"></a>
-</span><span id="__span-3-34"><a id="__codelineno-3-34" name="__codelineno-3-34" href="#__codelineno-3-34"></a>
-</span><span id="__span-3-35"><a id="__codelineno-3-35" name="__codelineno-3-35" href="#__codelineno-3-35"></a><span class="n">app</span><span class="p">:</span> <span class="n">FastAPI</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">(</span><span class="n">lifespan</span><span class="o">=</span><span class="n">lifespan</span><span class="p">)</span>
-</span><span id="__span-3-36"><a id="__codelineno-3-36" name="__codelineno-3-36" href="#__codelineno-3-36"></a>
-</span><span id="__span-3-37"><a id="__codelineno-3-37" name="__codelineno-3-37" href="#__codelineno-3-37"></a>
-</span><span id="__span-3-38"><a id="__codelineno-3-38" name="__codelineno-3-38" href="#__codelineno-3-38"></a><span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"/api/contracts"</span><span class="p">)</span>
-</span><span id="__span-3-39"><a id="__codelineno-3-39" name="__codelineno-3-39" href="#__codelineno-3-39"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">upload_contract</span><span class="p">(</span><span class="n">file</span><span class="p">:</span> <span class="n">UploadFile</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
-</span><span id="__span-3-40"><a id="__codelineno-3-40" name="__codelineno-3-40" href="#__codelineno-3-40"></a><span class="w">    </span><span class="sd">"""Validate the contract and send it to the Drive folder."""</span>
-</span><span id="__span-3-41"><a id="__codelineno-3-41" name="__codelineno-3-41" href="#__codelineno-3-41"></a>    <span class="n">key</span> <span class="o">=</span> <span class="k">await</span> <span class="n">uploads</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">file</span><span class="p">,</span> <span class="n">subdir</span><span class="o">=</span><span class="s2">"contracts"</span><span class="p">)</span>
-</span><span id="__span-3-42"><a id="__codelineno-3-42" name="__codelineno-3-42" href="#__codelineno-3-42"></a>    <span class="k">return</span> <span class="p">{</span><span class="s2">"key"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">key</span><span class="p">)}</span>
-</span><span id="__span-3-43"><a id="__codelineno-3-43" name="__codelineno-3-43" href="#__codelineno-3-43"></a>
-</span><span id="__span-3-44"><a id="__codelineno-3-44" name="__codelineno-3-44" href="#__codelineno-3-44"></a>
-</span><span id="__span-3-45"><a id="__codelineno-3-45" name="__codelineno-3-45" href="#__codelineno-3-45"></a><span class="nd">@app</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="s2">"/api/contracts/</span><span class="si">{name}</span><span class="s2">"</span><span class="p">)</span>
-</span><span id="__span-3-46"><a id="__codelineno-3-46" name="__codelineno-3-46" href="#__codelineno-3-46"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">delete_contract</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
-</span><span id="__span-3-47"><a id="__codelineno-3-47" name="__codelineno-3-47" href="#__codelineno-3-47"></a><span class="w">    </span><span class="sd">"""Delete the contract from Drive (it skips the trash)."""</span>
-</span><span id="__span-3-48"><a id="__codelineno-3-48" name="__codelineno-3-48" href="#__codelineno-3-48"></a>    <span class="k">return</span> <span class="p">{</span><span class="s2">"deleted"</span><span class="p">:</span> <span class="k">await</span> <span class="n">uploads</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="sa">f</span><span class="s2">"contracts/</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span><span class="p">)}</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncIterator</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">asynccontextmanager</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span><span class="p">,</span> <span class="n">UploadFile</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">UploadUtils</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.integrations.storage.google_drive</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">GoogleDriveUploadStorage</span><span class="p">,</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="p">)</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.settings</span><span class="w"> </span><span class="kn">import</span> <span class="n">GoogleDriveSettings</span>
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>
+</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>
+</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="k">class</span><span class="w"> </span><span class="nc">Settings</span><span class="p">(</span><span class="n">GoogleDriveSettings</span><span class="p">):</span>
+</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="w">    </span><span class="sd">"""Service settings: only Google Drive, in this example."""</span>
+</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>
+</span><span id="__span-5-16"><a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>
+</span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="n">settings</span><span class="p">:</span> <span class="n">Settings</span> <span class="o">=</span> <span class="n">Settings</span><span class="p">()</span>
+</span><span id="__span-5-18"><a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a><span class="n">storage</span><span class="p">:</span> <span class="n">GoogleDriveUploadStorage</span> <span class="o">=</span> <span class="n">GoogleDriveUploadStorage</span><span class="o">.</span><span class="n">from_service_account</span><span class="p">(</span>
+</span><span id="__span-5-19"><a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>    <span class="o">**</span><span class="n">settings</span><span class="o">.</span><span class="n">google_drive_kwargs</span><span class="p">()</span>
+</span><span id="__span-5-20"><a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a><span class="p">)</span>
+</span><span id="__span-5-21"><a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a><span class="n">uploads</span><span class="p">:</span> <span class="n">UploadUtils</span> <span class="o">=</span> <span class="n">UploadUtils</span><span class="p">(</span>
+</span><span id="__span-5-22"><a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>    <span class="n">backend</span><span class="o">=</span><span class="n">storage</span><span class="p">,</span>
+</span><span id="__span-5-23"><a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a>    <span class="n">max_size_bytes</span><span class="o">=</span><span class="mi">20</span> <span class="o">*</span> <span class="mi">1024</span> <span class="o">*</span> <span class="mi">1024</span><span class="p">,</span>
+</span><span id="__span-5-24"><a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a>    <span class="n">allowed_extensions</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">,</span> <span class="s2">"png"</span><span class="p">,</span> <span class="s2">"jpg"</span><span class="p">},</span>
+</span><span id="__span-5-25"><a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a><span class="p">)</span>
+</span><span id="__span-5-26"><a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a>
+</span><span id="__span-5-27"><a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a>
+</span><span id="__span-5-28"><a id="__codelineno-5-28" name="__codelineno-5-28" href="#__codelineno-5-28"></a><span class="nd">@asynccontextmanager</span>
+</span><span id="__span-5-29"><a id="__codelineno-5-29" name="__codelineno-5-29" href="#__codelineno-5-29"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">lifespan</span><span class="p">(</span><span class="n">app</span><span class="p">:</span> <span class="n">FastAPI</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AsyncIterator</span><span class="p">[</span><span class="kc">None</span><span class="p">]:</span>
+</span><span id="__span-5-30"><a id="__codelineno-5-30" name="__codelineno-5-30" href="#__codelineno-5-30"></a><span class="w">    </span><span class="sd">"""Close the HTTP client the backend created."""</span>
+</span><span id="__span-5-31"><a id="__codelineno-5-31" name="__codelineno-5-31" href="#__codelineno-5-31"></a>    <span class="k">yield</span>
+</span><span id="__span-5-32"><a id="__codelineno-5-32" name="__codelineno-5-32" href="#__codelineno-5-32"></a>    <span class="k">await</span> <span class="n">storage</span><span class="o">.</span><span class="n">aclose</span><span class="p">()</span>
+</span><span id="__span-5-33"><a id="__codelineno-5-33" name="__codelineno-5-33" href="#__codelineno-5-33"></a>
+</span><span id="__span-5-34"><a id="__codelineno-5-34" name="__codelineno-5-34" href="#__codelineno-5-34"></a>
+</span><span id="__span-5-35"><a id="__codelineno-5-35" name="__codelineno-5-35" href="#__codelineno-5-35"></a><span class="n">app</span><span class="p">:</span> <span class="n">FastAPI</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">(</span><span class="n">lifespan</span><span class="o">=</span><span class="n">lifespan</span><span class="p">)</span>
+</span><span id="__span-5-36"><a id="__codelineno-5-36" name="__codelineno-5-36" href="#__codelineno-5-36"></a>
+</span><span id="__span-5-37"><a id="__codelineno-5-37" name="__codelineno-5-37" href="#__codelineno-5-37"></a>
+</span><span id="__span-5-38"><a id="__codelineno-5-38" name="__codelineno-5-38" href="#__codelineno-5-38"></a><span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"/api/contracts"</span><span class="p">)</span>
+</span><span id="__span-5-39"><a id="__codelineno-5-39" name="__codelineno-5-39" href="#__codelineno-5-39"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">upload_contract</span><span class="p">(</span><span class="n">file</span><span class="p">:</span> <span class="n">UploadFile</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+</span><span id="__span-5-40"><a id="__codelineno-5-40" name="__codelineno-5-40" href="#__codelineno-5-40"></a><span class="w">    </span><span class="sd">"""Validate the contract and send it to the Drive folder."""</span>
+</span><span id="__span-5-41"><a id="__codelineno-5-41" name="__codelineno-5-41" href="#__codelineno-5-41"></a>    <span class="n">key</span> <span class="o">=</span> <span class="k">await</span> <span class="n">uploads</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">file</span><span class="p">,</span> <span class="n">subdir</span><span class="o">=</span><span class="s2">"contracts"</span><span class="p">)</span>
+</span><span id="__span-5-42"><a id="__codelineno-5-42" name="__codelineno-5-42" href="#__codelineno-5-42"></a>    <span class="k">return</span> <span class="p">{</span><span class="s2">"key"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">key</span><span class="p">)}</span>
+</span><span id="__span-5-43"><a id="__codelineno-5-43" name="__codelineno-5-43" href="#__codelineno-5-43"></a>
+</span><span id="__span-5-44"><a id="__codelineno-5-44" name="__codelineno-5-44" href="#__codelineno-5-44"></a>
+</span><span id="__span-5-45"><a id="__codelineno-5-45" name="__codelineno-5-45" href="#__codelineno-5-45"></a><span class="nd">@app</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="s2">"/api/contracts/</span><span class="si">{name}</span><span class="s2">"</span><span class="p">)</span>
+</span><span id="__span-5-46"><a id="__codelineno-5-46" name="__codelineno-5-46" href="#__codelineno-5-46"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">delete_contract</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+</span><span id="__span-5-47"><a id="__codelineno-5-47" name="__codelineno-5-47" href="#__codelineno-5-47"></a><span class="w">    </span><span class="sd">"""Delete the contract from Drive (it skips the trash)."""</span>
+</span><span id="__span-5-48"><a id="__codelineno-5-48" name="__codelineno-5-48" href="#__codelineno-5-48"></a>    <span class="k">return</span> <span class="p">{</span><span class="s2">"deleted"</span><span class="p">:</span> <span class="k">await</span> <span class="n">uploads</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="sa">f</span><span class="s2">"contracts/</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span><span class="p">)}</span>
 </span></code></pre></div>
 <p>Piece by piece:</p>
 <ul>
@@ -6055,18 +6296,18 @@ with access to the file there. With no link (file deleted in Drive, or a
 backend of yours without <code>web_view_link</code>) the route falls back to the usual
 path: a local file, or <code>404</code> "file not available".</p>
 <p>A backend of yours that wants the same only needs the method:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">SupportsWebViewLink</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyStorage</span><span class="p">:</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="sd">"""Example: a backend with a permanent link per key."""</span>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">web_view_link</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">        </span><span class="sd">"""Return the file's permanent link, or None."""</span>
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">"https://files.example.com/</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">"</span>
-</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>
-</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>
-</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">MyStorage</span><span class="p">(),</span> <span class="n">SupportsWebViewLink</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">SupportsWebViewLink</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyStorage</span><span class="p">:</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="sd">"""Example: a backend with a permanent link per key."""</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">web_view_link</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">        </span><span class="sd">"""Return the file's permanent link, or None."""</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">"https://files.example.com/</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">"</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">MyStorage</span><span class="p">(),</span> <span class="n">SupportsWebViewLink</span><span class="p">)</span>
 </span></code></pre></div>
 <h2 id="resumable-upload-in-pieces">Resumable upload, in pieces<a class="headerlink" href="#resumable-upload-in-pieces" title="Permanent link">&para;</a></h2>
 <p>The backend uses Drive v3's
@@ -6193,34 +6434,34 @@ here), so the message talks about the common case: sharing.</p>
 <p>The token exchange sits behind the <code>AccessTokenProvider</code> protocol, a single
 method (<code>async def access_token(self) -&gt; str</code>). A user OAuth token provider
 replaces <code>ServiceAccountTokenProvider</code> without touching the client:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">httpx</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.integrations.storage.google_drive</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">GoogleDriveClient</span><span class="p">,</span>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">GoogleDriveUploadStorage</span><span class="p">,</span>
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="p">)</span>
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>
-</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>
-</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="k">class</span><span class="w"> </span><span class="nc">StaticTokenProvider</span><span class="p">:</span>
-</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">    </span><span class="sd">"""Example: a token obtained outside the SDK."""</span>
-</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>
-</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">token</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="w">        </span><span class="sd">"""Store the token."""</span>
-</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">token</span>
-</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>
-</span><span id="__span-5-16"><a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">access_token</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-</span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="w">        </span><span class="sd">"""Return the stored token."""</span>
-</span><span id="__span-5-18"><a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span>
-</span><span id="__span-5-19"><a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>
-</span><span id="__span-5-20"><a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>
-</span><span id="__span-5-21"><a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a><span class="n">http</span><span class="p">:</span> <span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span> <span class="o">=</span> <span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">()</span>
-</span><span id="__span-5-22"><a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a><span class="n">client</span><span class="p">:</span> <span class="n">GoogleDriveClient</span> <span class="o">=</span> <span class="n">GoogleDriveClient</span><span class="p">(</span>
-</span><span id="__span-5-23"><a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a>    <span class="n">token_provider</span><span class="o">=</span><span class="n">StaticTokenProvider</span><span class="p">(</span><span class="s2">"ya29.…"</span><span class="p">),</span>
-</span><span id="__span-5-24"><a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a>    <span class="n">http_client</span><span class="o">=</span><span class="n">http</span><span class="p">,</span>
-</span><span id="__span-5-25"><a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a><span class="p">)</span>
-</span><span id="__span-5-26"><a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a><span class="n">storage</span><span class="p">:</span> <span class="n">GoogleDriveUploadStorage</span> <span class="o">=</span> <span class="n">GoogleDriveUploadStorage</span><span class="p">(</span>
-</span><span id="__span-5-27"><a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a>    <span class="n">client</span><span class="p">,</span> <span class="n">folder_id</span><span class="o">=</span><span class="s2">"1AbCdEfGhIjKlMnOp"</span>
-</span><span id="__span-5-28"><a id="__codelineno-5-28" name="__codelineno-5-28" href="#__codelineno-5-28"></a><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">httpx</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tempest_fastapi_sdk.integrations.storage.google_drive</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="n">GoogleDriveClient</span><span class="p">,</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="n">GoogleDriveUploadStorage</span><span class="p">,</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="p">)</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="k">class</span><span class="w"> </span><span class="nc">StaticTokenProvider</span><span class="p">:</span>
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">    </span><span class="sd">"""Example: a token obtained outside the SDK."""</span>
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">token</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="w">        </span><span class="sd">"""Store the token."""</span>
+</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">token</span>
+</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>
+</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">access_token</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="w">        </span><span class="sd">"""Return the stored token."""</span>
+</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span>
+</span><span id="__span-7-19"><a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>
+</span><span id="__span-7-20"><a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>
+</span><span id="__span-7-21"><a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a><span class="n">http</span><span class="p">:</span> <span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span> <span class="o">=</span> <span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">()</span>
+</span><span id="__span-7-22"><a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a><span class="n">client</span><span class="p">:</span> <span class="n">GoogleDriveClient</span> <span class="o">=</span> <span class="n">GoogleDriveClient</span><span class="p">(</span>
+</span><span id="__span-7-23"><a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a>    <span class="n">token_provider</span><span class="o">=</span><span class="n">StaticTokenProvider</span><span class="p">(</span><span class="s2">"ya29.…"</span><span class="p">),</span>
+</span><span id="__span-7-24"><a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a>    <span class="n">http_client</span><span class="o">=</span><span class="n">http</span><span class="p">,</span>
+</span><span id="__span-7-25"><a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a><span class="p">)</span>
+</span><span id="__span-7-26"><a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a><span class="n">storage</span><span class="p">:</span> <span class="n">GoogleDriveUploadStorage</span> <span class="o">=</span> <span class="n">GoogleDriveUploadStorage</span><span class="p">(</span>
+</span><span id="__span-7-27"><a id="__codelineno-7-27" name="__codelineno-7-27" href="#__codelineno-7-27"></a>    <span class="n">client</span><span class="p">,</span> <span class="n">folder_id</span><span class="o">=</span><span class="s2">"1AbCdEfGhIjKlMnOp"</span>
+</span><span id="__span-7-28"><a id="__codelineno-7-28" name="__codelineno-7-28" href="#__codelineno-7-28"></a><span class="p">)</span>
 </span></code></pre></div>
 <h2 id="what-was-measured-and-what-was-not">What was measured and what was not<a class="headerlink" href="#what-was-measured-and-what-was-not" title="Permanent link">&para;</a></h2>
 <p>The suite checks <strong>the wire</strong>, with <code>httpx.MockTransport</code>: the JWT (decoded
@@ -6245,9 +6486,9 @@ above. The test
 <code>tests/integrations/storage/google_drive/test_live.py</code> does the full round
 trip (upload, overwrite, check <code>exists</code>, delete) when
 <code>TEST_GOOGLE_DRIVE_CREDENTIALS</code> and <code>TEST_GOOGLE_DRIVE_FOLDER_ID</code> are set:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nv">TEST_GOOGLE_DRIVE_CREDENTIALS</span><span class="o">=</span>/path/sa.json<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nv">TEST_GOOGLE_DRIVE_FOLDER_ID</span><span class="o">=</span>1AbCdEfGhIjKlMnOp<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>-m<span class="w"> </span>network<span class="w"> </span>tests/integrations/storage/google_drive/test_live.py
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nv">TEST_GOOGLE_DRIVE_CREDENTIALS</span><span class="o">=</span>/path/sa.json<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nv">TEST_GOOGLE_DRIVE_FOLDER_ID</span><span class="o">=</span>1AbCdEfGhIjKlMnOp<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>-m<span class="w"> </span>network<span class="w"> </span>tests/integrations/storage/google_drive/test_live.py
 </span></code></pre></div>
 <h2 id="recap">Recap<a class="headerlink" href="#recap" title="Permanent link">&para;</a></h2>
 <ul>
