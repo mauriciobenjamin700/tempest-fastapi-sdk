@@ -193,7 +193,7 @@ The response nests the second stage inside each detection:
     The fused `.onnx` is a build artifact. Serving it pulls **no** `onnx`
     — just `[vision]`, like the rest of this page. The file itself is
     built by `fuse_detect_classify`, in the
-    [Modelops](modelops.md#fusing-a-detector-and-a-classifier) recipe.
+    [Modelops](modelops/formats.md#fusing-a-detector-and-a-classifier) recipe.
 
 ## Accepted inputs + execution
 

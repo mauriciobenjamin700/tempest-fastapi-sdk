@@ -227,7 +227,16 @@ plugins:
               - MFA (TOTP / 2FA): recipes/mfa.md
               - Migrations: recipes/migrations.md
               - "Model weights (Hub lifecycle)": recipes/model-weights.md
-              - "Modelops (export, bench, quantization)": recipes/modelops.md
+              - "Modelops (export, bench, quantization)":
+                  - "Index": recipes/modelops.md
+                  - "Export scikit-learn and `.pkl`": recipes/modelops/sklearn.md
+                  - "Fuse, `.ort`, inspect, API and CLI": recipes/modelops/formats.md
+                  - "Know whether the model still works": recipes/modelops/monitoring.md
+                  - "Measure: time, CPU, GPU, RAM, energy and comparison": recipes/modelops/measure.md
+                  - "Playbook: where time and bytes go": recipes/modelops/playbook.md
+                  - "Quantize (dynamic, static and HuggingFace)": recipes/modelops/quantize.md
+                  - "Serve at the edge and publish the bundle": recipes/modelops/edge.md
+                  - "Start here": recipes/modelops/start.md
               - Multi-tenant: recipes/multi-tenant.md
               - n8n (workflow automation): recipes/n8n.md
               - Object-level permissions: recipes/authz.md
@@ -753,7 +762,16 @@ nav:
       - Métricas: recipes/metrics.md
       - MFA (TOTP / 2FA): recipes/mfa.md
       - Migrations: recipes/migrations.md
-      - "Modelops (export, bench, quantização)": recipes/modelops.md
+      - "Modelops (export, bench, quantização)":
+          - "Índice": recipes/modelops.md
+          - "Comece por aqui": recipes/modelops/start.md
+          - "Exportar scikit-learn e `.pkl`": recipes/modelops/sklearn.md
+          - "Fundir, `.ort`, inspecionar, API e CLI": recipes/modelops/formats.md
+          - "Medir: tempo, CPU, GPU, RAM, energia e comparação": recipes/modelops/measure.md
+          - "Playbook: onde o tempo e os bytes vão": recipes/modelops/playbook.md
+          - "Quantizar (dinâmica, estática e HuggingFace)": recipes/modelops/quantize.md
+          - "Saber se o modelo ainda funciona": recipes/modelops/monitoring.md
+          - "Servir na borda e publicar o pacote": recipes/modelops/edge.md
       - Multi-tenant: recipes/multi-tenant.md
       - n8n (automação de workflows): recipes/n8n.md
       - "Observabilidade (tracing)": recipes/observability.md
