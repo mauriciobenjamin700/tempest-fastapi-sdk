@@ -819,6 +819,43 @@ This matters most for a caller that passes **no** option per call — the
 The window and the default config are part of the `generation_cache` key, so
 two generators with different defaults never answer from each other's cache.
 
+!!! warning "The cut now leaves a `WARNING` in the log"
+    The daemon does not say it cut, but it leaves a trace: the truncated
+    prompt comes back with `prompt_eval_count` at **half the window plus 2
+    or 3 tokens**, whatever the size of what you sent. Measured on Ollama
+    0.30.11 on CPU (`qwen2.5:0.5b`, `num_gpu=0`, prompts of 1,000 to
+    30,000 words, all larger than the window): 1026 at `num_ctx` 2048, 2050
+    at the default 4096, 4098 at 8192 and 8194 at 16384; the 2026-11-26/27 study saw 2050 (`qwen2.5:3b`,
+    `qwen2.5-coder:14b`) and 2051 (`lfm2.5-thinking:1.2b`,
+    `ministral-3:14b`) at the default. A prompt that fits comes back with its
+    own size (1243 at `num_ctx` 2048).
+
+    So `OllamaGenerator` logs a `WARNING` on the
+    `tempest_fastapi_sdk.genai.ollama` logger when `prompt_eval_count` lands
+    between half the window and half plus 16 (or reaches the whole window),
+    with the model, the count and the window in the text and in `extra`:
+
+    ```text
+    WARNING tempest_fastapi_sdk.genai.ollama: Ollama model 'qwen2.5:0.5b'
+    evaluated 2050 prompt tokens with a 4096-token context window: an
+    overflowing prompt is cut to about half the window without an error, so
+    this prompt was likely truncated. Raise num_ctx on the generator.
+    ```
+
+    - The window is the request's `num_ctx` when it has one (from the
+      constructor or the call). Without it, it is the `context_length` the
+      daemon's `/api/ps` reports for the loaded model — looked up once per
+      generator, and only after a reply that carries `prompt_eval_count`. If
+      the lookup fails the check is skipped; the call never fails over it.
+    - It covers `generate`, `chat`, `chat_with_tools` (the `Agent` loop),
+      `stream` and both structured calls.
+    - The `num_ctx` default did **not** change: it is still `None`, inheriting
+      the daemon's window (4096 without `OLLAMA_CONTEXT_LENGTH`). A bigger
+      window costs VRAM, and that is the call of whoever runs the service;
+      the warning is what makes the cut visible. A prompt that lands exactly
+      in the band without being cut logs a false warning — rare, and the
+      remedy is the same.
+
 #### Reasoning: `think`
 
 A reasoning model (`gpt-oss`, `ornith`) takes the `think` field at the

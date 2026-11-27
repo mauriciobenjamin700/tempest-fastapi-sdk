@@ -816,6 +816,42 @@ Isso importa sobretudo para quem **não** passa opção nenhuma por chamada — 
 assim. A janela e o config padrão entram na chave do `generation_cache`, então
 dois geradores com defaults diferentes não respondem um pelo cache do outro.
 
+!!! warning "O corte agora deixa um `WARNING` no log"
+    O daemon não avisa que cortou, mas deixa um rastro: o prompt truncado
+    chega com `prompt_eval_count` em **metade da janela mais 2 ou 3
+    tokens**, seja qual for o tamanho do que você mandou. Medido no Ollama
+    0.30.11 em CPU (`qwen2.5:0.5b`, `num_gpu=0`, prompts de 1 000 a
+    30 000 palavras, todos maiores que a janela): 1026 com `num_ctx` 2048,
+    2050 no default de 4096, 4098 com 8192 e 8194 com 16384; a pesquisa de 2026-11-26/27 viu 2050
+    (`qwen2.5:3b`, `qwen2.5-coder:14b`) e 2051 (`lfm2.5-thinking:1.2b`,
+    `ministral-3:14b`) no default. Um prompt que cabe volta com o próprio
+    tamanho (1243 com `num_ctx` 2048).
+
+    Por isso o `OllamaGenerator` loga um `WARNING` no logger
+    `tempest_fastapi_sdk.genai.ollama` quando o `prompt_eval_count` cai
+    entre metade da janela e metade mais 16 (ou chega na janela inteira),
+    com o modelo, a contagem e a janela no texto e em `extra`:
+
+    ```text
+    WARNING tempest_fastapi_sdk.genai.ollama: Ollama model 'qwen2.5:0.5b'
+    evaluated 2050 prompt tokens with a 4096-token context window: an
+    overflowing prompt is cut to about half the window without an error, so
+    this prompt was likely truncated. Raise num_ctx on the generator.
+    ```
+
+    - A janela é o `num_ctx` da requisição quando houver (do construtor ou
+      da chamada). Sem ele, é o `context_length` que o `/api/ps` do daemon
+      informa para o modelo carregado — consultado uma vez por gerador, e
+      só depois de uma resposta que traga `prompt_eval_count`. Se a consulta
+      falhar, a checagem é pulada; a chamada nunca falha por causa dela.
+    - Vale para `generate`, `chat`, `chat_with_tools` (o laço do `Agent`),
+      `stream` e as duas chamadas estruturadas.
+    - O default de `num_ctx` **não** mudou: continua `None`, herdando a
+      janela do daemon (4096 sem `OLLAMA_CONTEXT_LENGTH`). Subir a janela
+      custa VRAM, e isso é decisão de quem sobe o serviço; o aviso é o que
+      torna o corte visível. Um prompt que caia exatamente na faixa sem ter
+      sido cortado gera um aviso falso — raro, e o remédio é o mesmo.
+
 #### Raciocínio: `think`
 
 Modelo de raciocínio (o `gpt-oss`, o `ornith`) aceita o campo `think` no

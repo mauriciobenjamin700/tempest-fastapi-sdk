@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -47,7 +48,11 @@ from tempest_fastapi_sdk.genai.structured import (
     parse_structured,
 )
 from tempest_fastapi_sdk.genai.tracing import genai_span
-from tempest_fastapi_sdk.utils.http_client import HTTPClient, RetryPolicy
+from tempest_fastapi_sdk.utils.http_client import (
+    CircuitOpenError,
+    HTTPClient,
+    RetryPolicy,
+)
 
 if TYPE_CHECKING:
     import httpx
@@ -64,6 +69,24 @@ or off on a model with the thinking capability; ``"low"``/``"medium"``/
 """
 
 _THINK_LEVELS: frozenset[str] = frozenset({"low", "medium", "high"})
+
+_LOGGER: logging.Logger = logging.getLogger(__name__)
+
+_TRUNCATION_SLACK_TOKENS: int = 16
+"""How far above half the window a truncated ``prompt_eval_count`` may land.
+
+Ollama cuts an overflowing prompt to about half the context window and
+answers ``200`` with no error. Measured on Ollama 0.30.11 on CPU
+(``qwen2.5:0.5b``, ``num_gpu=0``, prompts of 1,000 to 30,000 words, all
+larger than the window): the truncated count was half the window plus 2 at
+every window tried (1026 at 2048, 2050 at 4096, 4098 at 8192, 8194 at
+16384), and the 2026-11-26/27
+study saw 2050 (``qwen2.5:3b``, ``qwen2.5-coder:14b``) and 2051
+(``lfm2.5-thinking:1.2b``, ``ministral-3:14b``) at 4096. A prompt that fits
+reports its own size, so the band stays narrow: a prompt that genuinely
+lands in it gets a spurious warning, and one above it — 1243 tokens at
+2048 was measured — gets none.
+"""
 
 _THINKING_UNSUPPORTED: str = "does not support thinking"
 """Substring of the daemon's error for ``think`` on a model without it.
@@ -550,7 +573,10 @@ class OllamaGenerator(_OllamaClientMixin):
                 field by field, and its keyword overrides win over both.
             num_ctx (int | None): Context window in tokens, sent as the
                 ``num_ctx`` option on every request. ``None`` leaves the
-                daemon's default.
+                daemon's default (4096 without ``OLLAMA_CONTEXT_LENGTH``).
+                Either way, a reply whose ``prompt_eval_count`` shows the
+                daemon truncated the prompt logs a ``WARNING`` on this
+                module's logger.
             options (dict[str, Any] | None): Raw Ollama ``options`` sent on
                 every request (``num_thread``, ``num_gpu``, …), under the
                 ones a call's config or overrides produce.
@@ -593,6 +619,7 @@ class OllamaGenerator(_OllamaClientMixin):
         self.config = config
         self.options: dict[str, Any] = merged
         self.think: ThinkLevel | None = think
+        self._loaded_num_ctx: int | None = None
 
     @property
     def is_loaded(self) -> bool:
@@ -750,6 +777,7 @@ class OllamaGenerator(_OllamaClientMixin):
         _raise_for_status(self.model, response)
         data: dict[str, Any] = response.json()
         _raise_on_error(self.model, data)
+        await self._warn_if_truncated(payload, data)
         return (
             str(data.get("response", "")),
             data.get("prompt_eval_count"),
@@ -848,6 +876,7 @@ class OllamaGenerator(_OllamaClientMixin):
         _raise_for_status(self.model, response)
         data: dict[str, Any] = response.json()
         _raise_on_error(self.model, data)
+        await self._warn_if_truncated(payload, data)
         message: dict[str, Any] = data.get("message") or {}
         return (
             str(message.get("content", "")),
@@ -937,6 +966,7 @@ class OllamaGenerator(_OllamaClientMixin):
             _raise_for_status(self.model, response)
             data: dict[str, Any] = response.json()
             _raise_on_error(self.model, data)
+            await self._warn_if_truncated(payload, data)
             message: dict[str, Any] = data.get("message") or {}
             content = str(message.get("content") or "")
             if not content.strip():
@@ -1058,6 +1088,7 @@ class OllamaGenerator(_OllamaClientMixin):
             _raise_for_status(self.model, response)
             data: dict[str, Any] = response.json()
             _raise_on_error(self.model, data)
+            await self._warn_if_truncated(payload, data)
             message: dict[str, Any] = data.get("message") or {}
             content = str(message.get("content") or "")
             if extract_json_object(content) is None:
@@ -1119,6 +1150,7 @@ class OllamaGenerator(_OllamaClientMixin):
         _raise_for_status(self.model, response)
         data: dict[str, Any] = response.json()
         _raise_on_error(self.model, data)
+        await self._warn_if_truncated(payload, data)
         return data.get("message") or {}
 
     async def stream(
@@ -1173,10 +1205,102 @@ class OllamaGenerator(_OllamaClientMixin):
                 if piece:
                     yield str(piece)
                 if chunk.get("done"):
+                    await self._warn_if_truncated(payload, chunk)
                     break
         except httpx_module.HTTPStatusError as exc:
             _raise_if_thinking_unsupported(self.model, exc.response)
             raise
+
+    async def _warn_if_truncated(
+        self,
+        payload: dict[str, Any],
+        data: dict[str, Any],
+    ) -> None:
+        """Log a warning when the daemon truncated the prompt.
+
+        Ollama cuts a prompt longer than the context window and answers
+        ``200`` with no error, so the only trace is the ``prompt_eval_count``
+        it reports: the truncated prompt lands at half the window plus a few
+        tokens (see ``_TRUNCATION_SLACK_TOKENS``). The window is the request's
+        ``num_ctx`` when it set one; otherwise it is the ``context_length``
+        the daemon reports for the loaded model in ``/api/ps``, looked up
+        once per generator — a request without ``num_ctx`` always runs at
+        the daemon's default. Counting tokens on this side would need the
+        model's tokenizer, so only the daemon's count is used. A failed
+        lookup skips the check rather than failing the call.
+
+        Args:
+            payload (dict[str, Any]): The request body that was sent.
+            data (dict[str, Any]): The decoded reply (or final stream line).
+        """
+        count = data.get("prompt_eval_count")
+        if not isinstance(count, int) or count <= 0:
+            return
+        window = await self._context_window(payload)
+        if window is None:
+            return
+        half = window // 2
+        if half <= count <= half + _TRUNCATION_SLACK_TOKENS or count >= window:
+            _LOGGER.warning(
+                "Ollama model %r evaluated %d prompt tokens with a %d-token "
+                "context window: an overflowing prompt is cut to about half "
+                "the window without an error, so this prompt was likely "
+                "truncated. Raise num_ctx on the generator.",
+                self.model,
+                count,
+                window,
+                extra={
+                    "model": self.model,
+                    "prompt_eval_count": count,
+                    "num_ctx": window,
+                },
+            )
+
+    async def _context_window(self, payload: dict[str, Any]) -> int | None:
+        """Return the context window a request ran with, when it is known.
+
+        Args:
+            payload (dict[str, Any]): The request body that was sent.
+
+        Returns:
+            int | None: The request's ``num_ctx`` option, else the loaded
+            model's ``context_length`` from ``/api/ps``, else ``None``.
+        """
+        options = payload.get("options") or {}
+        num_ctx = options.get("num_ctx")
+        if isinstance(num_ctx, int) and num_ctx > 0:
+            return num_ctx
+        if self._loaded_num_ctx is None:
+            self._loaded_num_ctx = await self._lookup_loaded_context()
+        return self._loaded_num_ctx
+
+    async def _lookup_loaded_context(self) -> int | None:
+        """Read this model's ``context_length`` from the daemon's ``/api/ps``.
+
+        Returns:
+            int | None: The loaded context length, or ``None`` when the
+            model is not listed or the lookup fails.
+        """
+        httpx_module = _require_httpx()
+        try:
+            response = await self._http().get(f"{self.base_url}/api/ps")
+            response.raise_for_status()
+            listing = response.json()
+        except (httpx_module.HTTPError, ValueError, CircuitOpenError) as exc:
+            _LOGGER.debug("Ollama /api/ps lookup failed: %s", exc)
+            return None
+        models = listing.get("models") if isinstance(listing, dict) else None
+        if not isinstance(models, list):
+            return None
+        names = {self.model, f"{self.model}:latest"}
+        for entry in models:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("name") in names or entry.get("model") in names:
+                length = entry.get("context_length")
+                if isinstance(length, int) and length > 0:
+                    return length
+        return None
 
     def _request_payload(
         self,

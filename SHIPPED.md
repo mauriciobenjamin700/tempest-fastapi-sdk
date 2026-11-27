@@ -5125,3 +5125,12 @@ quando `think=False`). O OpenAI-compat já tem o equivalente (`effort`,
 enviado em `effort_field`, `reasoning_effort` por padrão, no
 `complete_structured`) e não mudou. Testes: `tests/genai/test_ollama_think.py`. Docs:
 receita de genai, "Raciocínio: `think`".
+
+**Aviso de truncamento (#865).** `_warn_if_truncated` (`genai/ollama.py`)
+roda depois de toda resposta do `OllamaGenerator` (e na linha final do
+`stream`): `prompt_eval_count` em `[janela // 2, janela // 2 + 16]` ou
+`>= janela` loga `WARNING`. Janela = `options.num_ctx` da requisição, senão
+o `context_length` do `/api/ps` (cacheado por instância em
+`_loaded_num_ctx`). Default de `num_ctx` mantido em `None` (opção B da
+issue). Testes: `tests/genai/test_ollama_truncation.py`. Docs: receita de
+genai ("Janela de contexto") e de agentes.

@@ -48,6 +48,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Reproduzido no Ollama 0.30.11: `ornith:35b` com `think=false` respondeu
   markdown com `200` em 3 de 3 chamadas. Antes o caso era um `ValueError`
   genérico, que continua pegando esta exceção.
+- **Truncamento de contexto do Ollama deixa de ser silencioso** (#865). O
+  daemon corta o prompt maior que a janela e responde `200`; o
+  `OllamaGenerator` agora loga um `WARNING` em
+  `tempest_fastapi_sdk.genai.ollama` (com `model`, `prompt_eval_count` e
+  `num_ctx` em `extra`) quando o `prompt_eval_count` cai entre metade da
+  janela e metade + 16, ou chega na janela — onde o Ollama deixa o prompt
+  cortado. Medido no Ollama 0.30.11 em CPU (`qwen2.5:0.5b`): o truncado
+  volta com metade + 2 em toda janela testada (1026 a 2048, 2050 a 4096,
+  4098 a 8192, 8194 a 16384), e um prompt que cabe volta com o próprio
+  tamanho (1243 a 2048). A janela é o `num_ctx` da requisição ou, sem ele,
+  o `context_length` do modelo no `/api/ps` (consultado uma vez por
+  gerador; falha na consulta pula a checagem). Vale para `generate`,
+  `chat`, `chat_with_tools`, `stream` e as chamadas estruturadas. O default
+  de `num_ctx` continua `None` (decisão registrada na issue).
 
 
 ### Changed

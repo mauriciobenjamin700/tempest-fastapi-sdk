@@ -274,6 +274,12 @@ its own `config` wins field by field. `TextGenerator` takes the same
     runs); with `num_ctx=32768` it processed all 11,551 and answered
     correctly (3 of 3).
 
+    The cut still raises no error, but it no longer leaves no trace:
+    `OllamaGenerator` logs a `WARNING` on `tempest_fastapi_sdk.genai.ollama`
+    when `prompt_eval_count` lands where Ollama leaves a truncated prompt —
+    see [Context window](genai.en.md#context-window-num_ctx). The warning
+    points at the problem; `num_ctx` is what fixes it.
+
 ## Pydantic-typed tools
 
 Writing JSON-schema by hand next to the handler means **two descriptions of
