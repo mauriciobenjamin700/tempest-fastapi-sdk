@@ -776,8 +776,9 @@ nunca colide.
 #### Janela de contexto: `num_ctx`
 
 O Ollama processa no máximo `num_ctx` tokens de prompt, e o que passa disso
-ele **corta sem avisar**: a resposta vem `200`, sem erro, gerada sobre um
-pedaço do que você mandou. Medido no Ollama 0.30.11 (`lfm2.5-thinking:1.2b`,
+o daemon **corta sem avisar**: a resposta vem `200`, sem erro, gerada sobre
+um pedaço do que você mandou (desde a 0.374.0 o SDK detecta o corte e loga um
+`WARNING` — ver abaixo). Medido no Ollama 0.30.11 (`lfm2.5-thinking:1.2b`,
 numa RTX 4070 Ti SUPER de 16 GB): um chat de 35 018 tokens voltou com
 `prompt_eval_count` de 2 051 no default, e de 35 018 com `num_ctx=65536`.
 Fixe a janela no gerador, e ela vai em toda chamada:
@@ -964,7 +965,8 @@ Medido na pesquisa de LLMs locais de 2026-11-26/27 (Ollama 0.30.11, RTX
 
 Com N=34 e N=33, um ponto e pouco é um item: não leia ordem fina entre
 `"low"` e `"high"`. O que a tabela mostra é o tempo — `"low"` empatou com
-os outros níveis com metade a um terço do p50.
+os outros níveis e, no p50 do relatório, levou de 25% a 40% do tempo do
+`"high"` e de 47% a 86% do `"medium"` (o padrão), conforme o uso.
 
 !!! warning "Modelo sem raciocínio recusa `think`"
     Modelo sem a capacidade `thinking` (no `/api/show`) responde `400` com

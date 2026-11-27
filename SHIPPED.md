@@ -1163,7 +1163,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `accepted=False` means nothing passed. **Fixed here:** the effective
   deadline was written to the run state but not back to the `AgentContext`,
   so delegation handed the child `None` and it ran to its own budget.
-- **Tool calls written in the text (#866, unreleased)** — `Agent` and the
+- **Tool calls written in the text (#866, v0.374.0)** — `Agent` and the
   `AIChatPipeline` tool loop run a call the model wrote as JSON in `content`
   when `tool_calls` is empty, **on by default**
   (`parse_text_tool_calls=False` turns it off). The whole reply (trimmed, one
@@ -5092,7 +5092,7 @@ real.
 ## Prefixos de tarefa no `OllamaEmbedder` (#864)
 
 `OllamaEmbedder(query_prefix=, passage_prefix=)` + `embed_query` /
-`embed_passages` em `genai/ollama.py`, o mesmo contrato do `Embedder` — o
+`embed_passages` em `genai/ollama/embedder.py`, o mesmo contrato do `Embedder` — o
 `Retriever` já chamava os dois métodos quando existiam. `embed` continua sem
 prefixo e os defaults são `""`. Presets nomeados em
 `genai/embedding_prefixes.py`: `EmbeddingPrefixes` (`TypedDict` que espalha em
@@ -5107,7 +5107,7 @@ qualquer dos dois construtores), `NOMIC_EMBED_TEXT_PREFIXES` e
 ## Qualidade do `OllamaGenerator`: schema estrito, `think` e aviso de truncamento (#862, #863, #865)
 
 **Schema estrito (#862).** `generate_structured` e `chat_structured` passam o
-`model_json_schema()` por `_require_every_property` (`genai/ollama.py`) antes
+`model_json_schema()` por `_require_every_property` (`genai/ollama/schema.py`) antes
 de postar o `format`: todo objeto (raiz, aninhado, item de lista, `$defs`)
 ganha `required == list(properties)`, opcional continua nullable, o model
 original não muda. O `lm-format-enforcer` do `[genai-structured]` e o
@@ -5126,7 +5126,7 @@ enviado em `effort_field`, `reasoning_effort` por padrão, no
 `complete_structured`) e não mudou. Testes: `tests/genai/test_ollama_think.py`. Docs:
 receita de genai, "Raciocínio: `think`".
 
-**Aviso de truncamento (#865).** `_warn_if_truncated` (`genai/ollama.py`)
+**Aviso de truncamento (#865).** `_warn_if_truncated` (`genai/ollama/_truncation.py`)
 roda depois de toda resposta do `OllamaGenerator` (e na linha final do
 `stream`): `prompt_eval_count` em `[janela // 2, janela // 2 + 16]` ou
 `>= janela` loga `WARNING`. Janela = `options.num_ctx` da requisição, senão

@@ -778,9 +778,10 @@ messages never collides.
 
 #### Context window: `num_ctx`
 
-Ollama processes at most `num_ctx` prompt tokens, and it **cuts the rest
-without a word**: the reply comes back `200`, no error, generated over a
-slice of what you sent. Measured on Ollama 0.30.11 (`lfm2.5-thinking:1.2b`,
+Ollama processes at most `num_ctx` prompt tokens, and the daemon **cuts the
+rest without a word**: the reply comes back `200`, no error, generated over a
+slice of what you sent (since 0.374.0 the SDK detects the cut and logs a
+`WARNING` — see below). Measured on Ollama 0.30.11 (`lfm2.5-thinking:1.2b`,
 on a 16 GB RTX 4070 Ti SUPER): a 35,018-token chat came back with
 `prompt_eval_count` 2,051 under the default, and 35,018 with
 `num_ctx=65536`. Pin the window on the generator, and it goes with every
@@ -968,7 +969,9 @@ SUPER, temperature 0):
 
 At N=34 and N=33 a point or so is one item: do not read a fine ranking
 between `"low"` and `"high"`. What the table shows is time — `"low"` tied
-with the other levels at half to a third of the p50.
+with the other levels and, at the report's p50, took 25% to 40% of the
+`"high"` time and 47% to 86% of the `"medium"` (default) time, depending on
+the use.
 
 !!! warning "A model without reasoning refuses `think`"
     A model without the `thinking` capability (in `/api/show`) answers `400`

@@ -5,7 +5,7 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.374.0] — 2026-11-27
 
 ### Added
 
@@ -115,9 +115,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `OllamaContextExceededError` passa a constar do `__all__` de
-  `tempest_fastapi_sdk.genai.ollama` (já era re-exportada em
-  `tempest_fastapi_sdk.genai`, mas faltava no módulo de origem).
 - **Serviço com o extra `[pdf]` aceitava imagem truncada depois do primeiro
   PDF** (#868). `import weasyprint` (feito na primeira renderização do
   `PdfRenderer`) liga `PIL.ImageFile.LOAD_TRUNCATED_IMAGES`, chave global do

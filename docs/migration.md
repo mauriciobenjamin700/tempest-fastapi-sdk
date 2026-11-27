@@ -2,7 +2,7 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
-## Unreleased — `Agent` e `AIChatPipeline` rodam chamada de ferramenta escrita no texto
+## 0.374.0 — `Agent` e `AIChatPipeline` rodam chamada de ferramenta escrita no texto
 
 Antes, uma resposta do modelo com `tool_calls` vazio era sempre a resposta final, mesmo quando o `content` era exatamente uma chamada em JSON (`{"name": "buscar_pedido", "arguments": {"pedido_id": "PED-1042"}}`). Agora, por padrão, o `Agent` e o loop de ferramentas do `AIChatPipeline` rodam essa chamada quando o texto inteiro é JSON de chamada e todo `name` é uma ferramenta registrada (#866). O passo da ferramenta sai com `AgentStep.from_text=True`.
 
@@ -16,6 +16,13 @@ generator = OllamaGenerator("qwen2.5-coder:14b")
 agent = Agent(generator, parse_text_tool_calls=False)
 pipeline = AIChatPipeline(generator, parse_text_tool_calls=False)
 ```
+
+## 0.374.0 — schema estrito na saída estruturada e imagem truncada recusada
+
+| Onde | O que muda | O que fazer |
+| --- | --- | --- |
+| `OllamaGenerator.chat_structured` / `generate_structured` | O schema enviado no `format` tem **todo campo em `required`** (inclusive os com default e os `X \| None`, que continuam aceitando `null`). O modelo passa a emitir campos que antes omitia — e que o default preenchia em silêncio: no `gpt-oss:20b` a acurácia por campo foi de 70,8 para 95,4 (33 casos, 2026-11-26/27, Ollama 0.30.11) | Nada, na maioria dos casos. Se um campo com default é "o modelo não precisa preencher", o modelo agora preenche: confira campos com default que o seu código trata como sinal de ausência |
+| `make_vision_router` com `max_image_pixels` (padrão), `FaceRecognizer`, o carregamento de imagem do `genai` e o `share` | Imagem truncada é recusada mesmo depois de o `weasyprint` (extra `[pdf]`) ter sido importado no processo; antes ela passava. O router responde `422` sem chamar o modelo, ao custo de uma decodificação a mais (~70 ms num JPEG de 12 MP, medido). `FaceRecognizer` e o `genai` decodificam a imagem na hora: a exceção sai na chamada, e uma imagem passada por caminho é lida para a memória | Cliente que mandava imagem truncada passa a receber `422`. Com `max_image_pixels=None` a checagem do router continua desligada |
 
 ## 0.373.0 — `BaseController` e `BaseService` ligam `ResponseT` à camada de baixo
 

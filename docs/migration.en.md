@@ -2,7 +2,7 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
-## Unreleased — `Agent` and `AIChatPipeline` run tool calls written in the text
+## 0.374.0 — `Agent` and `AIChatPipeline` run tool calls written in the text
 
 A model reply with empty `tool_calls` used to always be the final answer, even when `content` was exactly a JSON call (`{"name": "buscar_pedido", "arguments": {"pedido_id": "PED-1042"}}`). Now, by default, the `Agent` and the `AIChatPipeline` tool loop run that call when the whole text is call JSON and every `name` is a registered tool (#866). The tool step carries `AgentStep.from_text=True`.
 
@@ -16,6 +16,13 @@ generator = OllamaGenerator("qwen2.5-coder:14b")
 agent = Agent(generator, parse_text_tool_calls=False)
 pipeline = AIChatPipeline(generator, parse_text_tool_calls=False)
 ```
+
+## 0.374.0 — strict schema in structured output and truncated images refused
+
+| Where | What changes | What to do |
+| --- | --- | --- |
+| `OllamaGenerator.chat_structured` / `generate_structured` | The schema sent as `format` has **every field in `required`** (defaulted ones and `X \| None` too, which still accept `null`). The model now emits fields it used to omit — and that the default silently filled: on `gpt-oss:20b` per-field accuracy went from 70.8 to 95.4 (33 cases, 2026-11-26/27, Ollama 0.30.11) | Nothing, in most cases. If a defaulted field meant "the model need not fill this", the model now fills it: check defaulted fields your code reads as a sign of absence |
+| `make_vision_router` with `max_image_pixels` (default), `FaceRecognizer`, `genai` image loading and `share` | A truncated image is refused even after `weasyprint` (the `[pdf]` extra) was imported in the process; before, it passed. The router answers `422` without calling the model, at the cost of one more decode (~70 ms on a 12 MP JPEG, measured). `FaceRecognizer` and `genai` decode the image right away: the exception surfaces at the call, and an image passed by path is read into memory | A client that sent a truncated image now gets `422`. With `max_image_pixels=None` the router check stays off |
 
 ## 0.373.0 — `BaseController` and `BaseService` bind `ResponseT` to the layer below
 
