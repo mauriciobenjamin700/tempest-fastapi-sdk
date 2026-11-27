@@ -209,7 +209,7 @@ There's a whole section dedicated to this, explained step by step:
 
 | Env var | Type | Default | What it does |
 |---------|------|---------|--------------|
-| `AUTH_SINGLE_ACTIVE_TOKEN` | `bool` | `true` | Issuing an account token spends that user's other unused tokens **of the same purpose**, so only the newest activation / reset / email-change link opens the account. `false` restores the pre-v0.274.0 behaviour. See the [migration guide](../../migration.en.md#02740-only-the-newest-link-opens-the-account). |
+| `AUTH_SINGLE_ACTIVE_TOKEN` | `bool` | `true` | Issuing an account token spends that user's other unused tokens **of the same purpose**, so only the newest activation / reset / email-change link opens the account. `false` restores the pre-v0.274.0 behaviour. See the [migration guide](../../migration/0-27x.md#02740-only-the-newest-link-opens-the-account). |
 
 !!! danger "Without this, the user's correct reaction does not close the window"
     An attacker fires `POST /auth/password-reset/request` at a victim. The

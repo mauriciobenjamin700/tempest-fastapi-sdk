@@ -595,7 +595,7 @@ The SDK now stores the 30-second step of the last accepted code in the `totp_las
 The write is a conditional `UPDATE`: the stored row decides, not the loaded object, so a second session that read the user before the first acceptance is refused too (measured with SQLite, two sessions open over the same row).
 
 !!! warning "New column: `totp_last_step`"
-    Projects already on `MFAMixin` need the migration before running 0.306.0 — see the [migration guide](../migration.md#03060-single-use-totp-codes-need-the-totp_last_step-column).
+    Projects already on `MFAMixin` need the migration before running 0.306.0 — see the [migration guide](../migration/0-30x.md#03060-single-use-totp-codes-need-the-totp_last_step-column).
 
 ---
 

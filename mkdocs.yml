@@ -395,7 +395,20 @@ plugins:
                 - Critical flows: learning/marketplace/flows.md
                 - Endpoint map: learning/marketplace/api.md
             - Roadmap: roadmap.md
-            - Migration guide: migration.md
+            - Migration guide:
+                - "Index": migration.md
+                - "Migration 0.37x": migration/0-37x.md
+                - "Migration 0.36x": migration/0-36x.md
+                - "Migration 0.34x–0.35x": migration/0-34x-0-35x.md
+                - "Migration 0.33x": migration/0-33x.md
+                - "Migration 0.32x": migration/0-32x.md
+                - "Migration 0.31x": migration/0-31x.md
+                - "Migration 0.30x": migration/0-30x.md
+                - "Migration 0.27x": migration/0-27x.md
+                - "Migration 0.26x": migration/0-26x.md
+                - "Migration 0.25x": migration/0-25x.md
+                - "Migration 0.22x–0.23x": migration/0-22x-0-23x.md
+                - "Migration 0.8–0.17x": migration/0-8-0-17x.md
             - Contributing: contributing.md
             - Changelog: changelog.md
           nav_translations:
@@ -881,7 +894,20 @@ nav:
           - Fluxos críticos: learning/marketplace/flows.md
           - Mapa de endpoints: learning/marketplace/api.md
   - Roadmap: roadmap.md
-  - Guia de migração: migration.md
+  - Guia de migração:
+      - "Índice": migration.md
+      - "Migração 0.37x": migration/0-37x.md
+      - "Migração 0.36x": migration/0-36x.md
+      - "Migração 0.34x–0.35x": migration/0-34x-0-35x.md
+      - "Migração 0.33x": migration/0-33x.md
+      - "Migração 0.32x": migration/0-32x.md
+      - "Migração 0.31x": migration/0-31x.md
+      - "Migração 0.30x": migration/0-30x.md
+      - "Migração 0.27x": migration/0-27x.md
+      - "Migração 0.26x": migration/0-26x.md
+      - "Migração 0.25x": migration/0-25x.md
+      - "Migração 0.22x–0.23x": migration/0-22x-0-23x.md
+      - "Migração 0.8–0.17x": migration/0-8-0-17x.md
   - Contribuindo: contributing.md
   - Changelog: changelog.md
 

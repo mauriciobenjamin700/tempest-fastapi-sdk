@@ -208,7 +208,7 @@ Tem uma seção inteira só pra isso, explicada bem devagar: [Idioma dos e-mails
 
 | Env var | Tipo | Default | O que faz |
 |---------|------|---------|-----------|
-| `AUTH_SINGLE_ACTIVE_TOKEN` | `bool` | `true` | Emitir um token de conta gasta os outros tokens não usados **do mesmo propósito** daquele usuário, então só o link mais recente de ativação / reset / troca de e-mail abre a conta. `false` restaura o comportamento anterior à v0.274.0. Veja o [guia de migração](../../migration.md#02740-so-o-link-mais-recente-abre-a-conta). |
+| `AUTH_SINGLE_ACTIVE_TOKEN` | `bool` | `true` | Emitir um token de conta gasta os outros tokens não usados **do mesmo propósito** daquele usuário, então só o link mais recente de ativação / reset / troca de e-mail abre a conta. `false` restaura o comportamento anterior à v0.274.0. Veja o [guia de migração](../../migration/0-27x.md#02740-so-o-link-mais-recente-abre-a-conta). |
 
 !!! danger "Sem isso, a reação certa do usuário não fecha a janela"
     Um atacante dispara `POST /auth/password-reset/request` para a vítima. A

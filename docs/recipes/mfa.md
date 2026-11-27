@@ -590,7 +590,7 @@ Agora o SDK grava o passo de 30 segundos do último código aceito na coluna `to
 A gravação é um `UPDATE` condicional: quem decide é a linha no banco, não o objeto carregado, então uma segunda sessão que leu o usuário antes do primeiro aceite também recebe a recusa (medido com SQLite, duas sessões abertas sobre a mesma linha).
 
 !!! warning "Coluna nova: `totp_last_step`"
-    Quem já usa `MFAMixin` precisa da migration antes de subir a 0.306.0 — veja o [guia de migração](../migration.md#03060-codigo-totp-de-uso-unico-pede-a-coluna-totp_last_step).
+    Quem já usa `MFAMixin` precisa da migration antes de subir a 0.306.0 — veja o [guia de migração](../migration/0-30x.md#03060-codigo-totp-de-uso-unico-pede-a-coluna-totp_last_step).
 
 ---
 
