@@ -177,9 +177,13 @@ def _nav_sections(nav: object) -> dict[str, list[str]]:
     anything shipped after it was written became invisible to LLM consumers
     even though it was on the site.
 
-    A top-level entry that is a single page is grouped under
-    :data:`_UNGROUPED_SECTION` rather than promoted, since a dozen one-line
-    sections are harder for a model to skim than one block.
+    Every titled top-level entry becomes its own section, under its nav
+    label and in nav order, even when it holds a single page. Pooling the
+    single-page entries into one block put ``Tutorial``, ``Roadmap``,
+    ``Contributing`` and ``Changelog`` under ``Overview``, ahead of
+    ``Installation``, so ``llms.txt`` no longer read in the order the nav
+    teaches. Only a bare path at the top level, which has no label, goes to
+    :data:`_UNGROUPED_SECTION`.
 
     Args:
         nav (object): A nav as MkDocs parsed it from YAML — a list whose
@@ -204,10 +208,8 @@ def _nav_sections(nav: object) -> dict[str, list[str]]:
         for title, value in item.items():
             pages: list[str] = []
             _collect(value, pages)
-            if not pages:
-                continue
-            section = _UNGROUPED_SECTION if len(pages) == 1 else str(title)
-            sections.setdefault(section, []).extend(pages)
+            if pages:
+                sections.setdefault(str(title), []).extend(pages)
     return sections
 
 
