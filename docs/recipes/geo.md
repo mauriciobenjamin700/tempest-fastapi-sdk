@@ -1194,7 +1194,7 @@ Pedaço por pedaço:
   5 000 pontos para o país).
 - `render_br_map_svg(contagens, pontos)` desenha o mapa do Brasil com cada UF
   num tom e uma bolha por cidade — é o que a página do admin usa (veja
-  [Mapa de distribuição](admin.md#mapa-de-distribuicao-geografica-location_maps-v03670)).
+  [Mapa de distribuição](admin/dashboard.md#mapa-de-distribuicao-geografica-location_maps-v03670)).
 
 !!! note "Os contornos são simplificados"
     Na malha mínima do IBGE, 52 dos 5571 municípios (0,93%) caem fora do

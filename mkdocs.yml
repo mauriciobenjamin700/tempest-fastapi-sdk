@@ -108,7 +108,17 @@ plugins:
             - Tutorial: tutorial.md
             - Recipes:
               - recipes/index.md
-              - Admin site: recipes/admin.md
+              - Admin site:
+                  - "Index": recipes/admin.md
+                  - "Audit history": recipes/admin/audit.md
+                  - "Custom actions": recipes/admin/actions.md
+                  - "Dashboard: cards, indicators and map": recipes/admin/dashboard.md
+                  - "Form fields": recipes/admin/forms.md
+                  - "Global search": recipes/admin/search.md
+                  - "List view: counts, import and bulk edits": recipes/admin/list.md
+                  - "Mount the admin site": recipes/admin/setup.md
+                  - "Permissions: RBAC, row scope and impersonation": recipes/admin/permissions.md
+                  - "Timezone, concurrent edits and language": recipes/admin/operator.md
               - Admin SQL console: recipes/admin-sql-console.md
               - AI agents: recipes/agents.md
               - AI agents (advanced): recipes/agents-advanced.md
@@ -677,7 +687,17 @@ nav:
       - "OpenPix (assinaturas e planos)": recipes/openpix-subscriptions.md
       - "OpenPix (Pix via Woovi)": recipes/openpix.md
       - Outbox transacional: recipes/outbox.md
-      - Painel admin: recipes/admin.md
+      - Painel admin:
+          - "Índice": recipes/admin.md
+          - "Ações customizadas": recipes/admin/actions.md
+          - "Busca global": recipes/admin/search.md
+          - "Campos do formulário": recipes/admin/forms.md
+          - "Dashboard: cards, indicadores e mapa": recipes/admin/dashboard.md
+          - "Fuso, edição simultânea e idioma": recipes/admin/operator.md
+          - "Histórico de auditoria": recipes/admin/audit.md
+          - "Listagem: contagens, import e edição em massa": recipes/admin/list.md
+          - "Montar o painel": recipes/admin/setup.md
+          - "Permissões: RBAC, escopo por linha e impersonate": recipes/admin/permissions.md
       - PDFs: recipes/pdf.md
       - "Permissões object-level": recipes/authz.md
       - "Pesos de modelos (ciclo no Hub)": recipes/model-weights.md

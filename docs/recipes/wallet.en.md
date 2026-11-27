@@ -527,7 +527,7 @@ segundo admin     WALLET_MANUAL_PAYOUT_NOT_PENDING
 repository's session — a different session is a `ValueError` in the
 constructor, because the refund and the status would commit apart. Without a
 `ledger`, only `mark_paid` works. The panel wires all of this on its own: see
-[Admin panel » Preset: manual payout](admin.md#preset-manual-payout-manual_payout_admin).
+[Admin panel » Preset: manual payout](admin/forms.md#preset-manual-payout-manual_payout_admin).
 
 ## Fees and splits
 
