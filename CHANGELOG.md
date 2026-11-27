@@ -25,6 +25,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Trocar os prefixos muda todos os vetores: índice existente precisa ser
     reindexado.
 
+### Changed
+
+- **`Agent` e o loop de ferramentas do `AIChatPipeline` rodam chamada de
+  ferramenta escrita como JSON no `content`** (#866), **ligado por padrão**.
+  Quando a resposta vem sem `tool_calls` e o texto inteiro (sem espaço nas
+  pontas e sem uma única cerca de markdown em volta) é
+  `{"name": ..., "arguments": {...}}`, uma lista desses objetos ou vários
+  separados só por espaço, e todo `name` é uma ferramenta registrada naquele
+  turno, a chamada roda como uma nativa. Qualquer entrada que não case, JSON
+  inválido ou texto em volta, e a resposta continua sendo resposta. O passo
+  da ferramenta ganha o campo novo `AgentStep.from_text=True`, e o turno do
+  assistente volta ao modelo com a chamada em `tool_calls` e `content` vazio.
+  Desliga com `Agent(..., parse_text_tool_calls=False)` /
+  `AIChatPipeline(..., parse_text_tool_calls=False)`. Medido em 2026-11-27
+  (Ollama 0.30.11, 34 tarefas de ferramentas, temperatura 0, uma execução
+  por tarefa): `qwen2.5-coder:14b` foi de 20,6% (7/34) para 85,3% (29/34);
+  `gpt-oss:20b`, que já usava `tool_calls`, ficou em 94,1% (32/34) nas duas.
+  Nas 7 tarefas em que o certo era não chamar, o `qwen2.5-coder` caiu de 7/7
+  para 5/7, porque o JSON que ele escrevia nelas agora roda. Nota em
+  `docs/migration.md`.
+
 ## [0.373.0] — 2026-11-26
 
 ### Added

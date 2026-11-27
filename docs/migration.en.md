@@ -2,6 +2,21 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## Unreleased — `Agent` and `AIChatPipeline` run tool calls written in the text
+
+A model reply with empty `tool_calls` used to always be the final answer, even when `content` was exactly a JSON call (`{"name": "buscar_pedido", "arguments": {"pedido_id": "PED-1042"}}`). Now, by default, the `Agent` and the `AIChatPipeline` tool loop run that call when the whole text is call JSON and every `name` is a registered tool (#866). The tool step carries `AgentStep.from_text=True`.
+
+What can change for you: an agent whose legitimate answer is a JSON object with a tool's `name` and an `arguments` key now runs that tool instead of returning the JSON. To keep the old behaviour:
+
+```python
+from tempest_fastapi_sdk.agents import Agent
+from tempest_fastapi_sdk.genai import AIChatPipeline, OllamaGenerator
+
+generator = OllamaGenerator("qwen2.5-coder:14b")
+agent = Agent(generator, parse_text_tool_calls=False)
+pipeline = AIChatPipeline(generator, parse_text_tool_calls=False)
+```
+
 ## 0.373.0 — `BaseController` and `BaseService` bind `ResponseT` to the layer below
 
 Previously, `BaseController` declared its own `ResponseT` independently of the service and reached it via `cast("ResponseT", ...)` — a controller repeating the wrong schema passed `mypy --strict` and returned the service's schema at runtime (#838):

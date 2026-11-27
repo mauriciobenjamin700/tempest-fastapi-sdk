@@ -1163,6 +1163,18 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `accepted=False` means nothing passed. **Fixed here:** the effective
   deadline was written to the run state but not back to the `AgentContext`,
   so delegation handed the child `None` and it ran to its own budget.
+- **Tool calls written in the text (#866, unreleased)** — `Agent` and the
+  `AIChatPipeline` tool loop run a call the model wrote as JSON in `content`
+  when `tool_calls` is empty, **on by default**
+  (`parse_text_tool_calls=False` turns it off). The whole reply (trimmed, one
+  optional markdown fence) must be one `{"name", "arguments"}` object, a list,
+  or several separated by whitespace, every `name` a registered tool — all or
+  nothing. Parser in `agents/_tool_calls.py` (with `parse_arguments`, moved
+  out of `Agent`). Tool step gets `AgentStep.from_text=True`; the assistant
+  echo carries the call in `tool_calls` with empty `content` (echoing the
+  JSON as `content` measured 12/34 on `qwen2.5-coder:14b`, the model repeated
+  the call). Measured 2026-11-27, 34 tasks, t0: `qwen2.5-coder:14b` 7/34 ->
+  29/34; `gpt-oss:20b` 32/34 -> 32/34. Recipe: `docs/recipes/agents.md`.
 - **MCP, both directions (v0.355.0, extra `[fastmcp]` = `fastmcp>=4.1.0`,
   out of `[all]`)** — `tempest_fastapi_sdk.mcp`, submodule import, imports
   without the extra. **Serve:** the consumer builds the `FastMCP` and
