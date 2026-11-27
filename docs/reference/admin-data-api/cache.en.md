@@ -1,3 +1,7 @@
+---
+description: "Async Redis cache, the `@cached` decorator and key/tag invalidation."
+---
+
 # API Reference: `tempest_fastapi_sdk.cache`
 
 Async Redis cache, the `@cached` decorator and key/tag invalidation.

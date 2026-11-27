@@ -1,3 +1,7 @@
+---
+description: "Use para subir o serviço (`tempest serve`), abrir o console (`tempest shell`) e operar o banco com `tempest db`: squash, backup, restore, drift e seed."
+---
+
 # Subir, console e banco
 
 Use para subir o serviço (`tempest serve`), abrir o console (`tempest shell`) e operar o banco (`tempest db`).

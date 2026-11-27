@@ -1,3 +1,7 @@
+---
+description: "Use para gravar uploads numa pasta ou Shared Drive do Google Drive via service account com `GoogleDriveUploadStorage`, do Cloud Console aos erros."
+---
+
 # Google Drive (uploads)
 
 Seu serviço recebe arquivos — contratos, comprovantes, fotos — e a empresa

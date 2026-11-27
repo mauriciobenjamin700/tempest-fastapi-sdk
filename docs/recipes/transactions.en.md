@@ -1,3 +1,7 @@
+---
+description: "Use when a business rule does several writes that must commit together; covers `transaction()`, explicit `commit()`, `autocommit=False`, `savepoint()` and nesting."
+---
+
 # Transactions (commit and savepoint)
 
 Every `BaseRepository` write commits on its own. For a single write that

@@ -1,3 +1,7 @@
+---
+description: "Use para adicionar soft-delete (`SoftDeleteMixin`), `created_by`/`updated_by` e o idioma preferido do usuário a um model com mixins opt-in."
+---
+
 # 6. Soft-delete e auditoria (mixins)
 
 Use para adicionar soft-delete, `created_by`/`updated_by` e o idioma preferido do usuário com mixins.

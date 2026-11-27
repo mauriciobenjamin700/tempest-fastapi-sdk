@@ -1,3 +1,7 @@
+---
+description: "Use to add phishing-resistant passkey login; covers the credentials table, settings, the router, the frontend, the multi-worker challenge store, account recovery and MFA interplay."
+---
+
 # WebAuthn / passkeys
 
 TOTP proves the user holds a shared secret. A phishing page that asks for the

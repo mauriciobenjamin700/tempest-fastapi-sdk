@@ -1,3 +1,7 @@
+---
+description: "Dublês dos terceiros com que um serviço conversa."
+---
+
 # `tempest_fastapi_sdk.testing.fakes`
 
 Dublês dos terceiros com que um serviço conversa.

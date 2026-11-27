@@ -1,3 +1,7 @@
+---
+description: "Use para forçar tipagem estática e em runtime; contém linters, plugin do pydantic e `tempest_fastapi_sdk.mypy`, `[tool.tempest]`, `strict_types`, `typed` e `require_annotations`."
+---
+
 # Forçar tipagem (estático + runtime)
 
 Type hints ajudam no editor e no mypy, mas são **apagados em runtime** —

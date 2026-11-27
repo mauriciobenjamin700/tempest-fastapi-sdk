@@ -1,3 +1,7 @@
+---
+description: "Use para emitir e ler PDFs; contém payload tipado, cinco documentos prontos, rota HTTP, CLI, template próprio, segurança, libs de sistema, saída reproduzível e leitura por página."
+---
+
 # PDFs
 
 Todo serviço acaba precisando emitir um documento: recibo, orçamento,

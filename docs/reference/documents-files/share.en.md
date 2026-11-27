@@ -1,3 +1,7 @@
+---
+description: "Link previews for shared items: the Open Graph page and its card image."
+---
+
 # API Reference: `tempest_fastapi_sdk.share`
 
 Link previews for shared items: the Open Graph page and its card image.

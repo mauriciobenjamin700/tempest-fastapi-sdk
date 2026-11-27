@@ -1,3 +1,7 @@
+---
+description: "Use to model the marketplace: UML class diagram, physical ER, enums, invariants and the mapping of each entity to an SDK primitive."
+---
+
 # Domain model
 
 This page ships the **conceptual model** (UML class), the **physical model** (ER), and a glossary of each entity's attributes. Diagrams use Mermaid — rendered automatically by MkDocs Material.

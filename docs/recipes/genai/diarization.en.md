@@ -1,3 +1,7 @@
+---
+description: "Use to split audio by speaker (sherpa-onnx), recognise who it is from a voice profile and serve it over HTTP or the CLI."
+---
+
 # Who said what: diarization
 
 Use to split audio by speaker (sherpa-onnx), recognise who it is from a voice profile and serve it over HTTP or the CLI.

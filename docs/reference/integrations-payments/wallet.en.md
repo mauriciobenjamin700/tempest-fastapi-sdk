@@ -1,3 +1,7 @@
+---
+description: "Wallet module — balance, ledger, holds and Pix withdrawals in integer cents."
+---
+
 # API Reference: `tempest_fastapi_sdk.wallet`
 
 Wallet module — balance, ledger, holds and Pix withdrawals in integer cents.

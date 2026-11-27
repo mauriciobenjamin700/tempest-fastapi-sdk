@@ -1,3 +1,7 @@
+---
+description: "Use para gravar histórico append-only de create/update/delete na mesma transação; contém `BaseAuditLogModel`, `add_audited`, `update_audited`, autor, origem e `columns=`."
+---
+
 # Audit trail
 
 `AuditMixin` guarda **quem** mexeu por último (`created_by` / `updated_by`) e o `BaseModel` guarda **quando** (`created_at` / `updated_at`). Nenhum dos dois guarda o **histórico** das mudanças. O audit trail adiciona um log append-only: uma linha por create / update / delete, com o ator, a ação e um diff antes/depois das colunas alteradas.

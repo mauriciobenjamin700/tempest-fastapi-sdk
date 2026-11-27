@@ -1,3 +1,7 @@
+---
+description: "Use como referência citável do layout de um serviço Tempest; contém o que o `tempest new` gera, cada item do padrão com o gate que o cobra e `tempest generate --standard`."
+---
+
 # Padrão de serviço
 
 Esta página é a **referência citável** de como um serviço Tempest é

@@ -1,3 +1,7 @@
+---
+description: "Confirm a Pix payment against the provider before releasing anything."
+---
+
 # API Reference: `tempest_fastapi_sdk.integrations.payment.settlement`
 
 Confirm a Pix payment against the provider before releasing anything.

@@ -1,3 +1,7 @@
+---
+description: "Use para um endpoint de avatar com validação e limpeza e um fluxo de reset de senha com `EmailUtils`."
+---
+
 # Upload de arquivos e e-mail transacional
 
 Use para um endpoint de avatar com validação e limpeza e um fluxo de reset de senha com `EmailUtils`.

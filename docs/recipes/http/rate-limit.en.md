@@ -1,3 +1,7 @@
+---
+description: "Use to limit requests by IP, user, tenant or plan, with state in Redis, token bucket, `RateLimit-*` headers and a limit on a single route."
+---
+
 # Rate limiting (middleware and per route)
 
 Use to limit requests by IP, user, tenant or plan, with state in Redis, token bucket, `RateLimit-*` headers and a limit on a single route.

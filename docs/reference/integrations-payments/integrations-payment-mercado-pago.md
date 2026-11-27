@@ -1,3 +1,7 @@
+---
+description: "A superfície do Mercado Pago: cliente, schemas e webhook."
+---
+
 # `tempest_fastapi_sdk.integrations.payment.mercado_pago`
 
 A superfície do Mercado Pago: cliente, schemas e webhook.

@@ -1,3 +1,7 @@
+---
+description: "Use to integrate a service with n8n in both directions; covers running n8n, credentials, workflows, Webhook node auth, test vs production URLs and guaranteed delivery via outbox."
+---
+
 # n8n (workflow automation)
 
 [n8n](https://n8n.io) builds *workflows* by wiring nodes together: a

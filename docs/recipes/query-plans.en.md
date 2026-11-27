@@ -1,3 +1,7 @@
+---
+description: "Use to understand why an endpoint is slow via EXPLAIN; covers `explain_queries`, what each database returns, writes never re-run and how to read the report."
+---
+
 # Query plans (EXPLAIN)
 
 A development tool for the question "why is this endpoint slow?". A timer

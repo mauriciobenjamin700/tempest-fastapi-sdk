@@ -1,3 +1,7 @@
+---
+description: "Use to refund Pix with safe retries and no double refunds; covers `PixRefundProvider`, partial refunds, the provider router and how each provider guarantees idempotency."
+---
+
 # Pix refunds (idempotent)
 
 A passenger cancels a ticket. Your service gives the money back over Pix,

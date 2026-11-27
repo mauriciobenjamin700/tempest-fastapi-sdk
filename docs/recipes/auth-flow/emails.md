@@ -1,3 +1,7 @@
+---
+description: "Use para entender token, link e template dos e-mails de conta, pôr a sua marca e sobrescrever os templates Jinja2; contém as variáveis de contexto e um exemplo."
+---
+
 # E-mails: anatomia, marca e templates
 
 Use para entender como link, template e URL se encaixam, pôr a sua marca nos e-mails e sobrescrever os templates Jinja2.

@@ -1,3 +1,7 @@
+---
+description: "Use to shape every file in a service the way `tempest check` enforces; covers the nine coded rules, declared exceptions and migrating an existing service."
+---
+
 # Recommended architecture
 
 The [Architecture](architecture.md) page says **which layers exist**. This

@@ -1,3 +1,7 @@
+---
+description: "Use to build a whole running service: settings from mixins, migration at startup, signup and login, a protected upload and an end-to-end test."
+---
+
 # Complete service: settings, migrations, auth, upload and a test
 
 Use this page when you want **a whole service that runs**, with the pieces

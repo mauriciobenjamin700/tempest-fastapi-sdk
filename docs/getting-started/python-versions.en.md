@@ -1,3 +1,7 @@
+---
+description: "Use to pick and pin the Python version per project with `uv`; covers the version policy, `.python-version`, testing on three versions and common pitfalls."
+---
+
 # Pick your Python version
 
 With `uv` installed ([previous page](uv.md)), Python stops being something you "have on the machine" and becomes **a per-project choice**. This page shows how to make that choice, and how not to get bitten by it later.

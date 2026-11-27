@@ -1,3 +1,7 @@
+---
+description: "Use para receber mensagens e status do WhatsApp vindos do gateway zap-api; contém a rota pronta com `401`, despacho por enum, camada de serviço com `ZapInbox` e testes sem gateway."
+---
+
 # Receber mensagens do WhatsApp (zap-api)
 
 A receita [WhatsApp (zap-api)](zap.md) cobre o lado de **saída**: enviar e

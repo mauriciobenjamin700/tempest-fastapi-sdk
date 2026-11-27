@@ -1,3 +1,7 @@
+---
+description: "RevenueCat: assinaturas in-app da App Store e do Google Play."
+---
+
 # `tempest_fastapi_sdk.integrations.subscriptions.revenuecat`
 
 RevenueCat: assinaturas in-app da App Store e do Google Play.

@@ -1,3 +1,7 @@
+---
+description: "Use to generate a QR code with a logo and a shareable frame; covers how much logo fits at level `H`, the frame with photo and route and the routes for a ride link."
+---
+
 # QR code with a logo and a frame (ride link)
 
 A QR code printed on the car window, on a poster at the bus station or in an

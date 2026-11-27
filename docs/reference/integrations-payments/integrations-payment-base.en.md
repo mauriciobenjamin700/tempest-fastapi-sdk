@@ -1,3 +1,7 @@
+---
+description: "The canonical payment contract every bundled provider is mapped into."
+---
+
 # API Reference: `tempest_fastapi_sdk.integrations.payment.base`
 
 The canonical payment contract every bundled provider is mapped into.

@@ -1,3 +1,7 @@
+---
+description: "Weight lifecycle for the HuggingFace models a service self-hosts."
+---
+
 # API Reference: `tempest_fastapi_sdk.genai.hub`
 
 Weight lifecycle for the HuggingFace models a service self-hosts.

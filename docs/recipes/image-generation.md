@@ -1,3 +1,7 @@
+---
+description: "Use para gerar imagem com difusão local via `ImageGenerator`; contém config turbo x completo, seed, img2img, rota HTTP, liberar GPU, `pipeline_kwargs` e scheduler."
+---
+
 # Geração de imagem (local)
 
 O SDK já gerava texto, entendia imagem (VLM), embedava, transcrevia e

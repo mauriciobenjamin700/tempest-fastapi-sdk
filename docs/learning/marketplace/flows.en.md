@@ -1,3 +1,7 @@
+---
+description: "Use to implement the marketplace critical flows: sequence diagrams for signup, invites, idempotent checkout, SSE + Web Push and state machines."
+---
+
 # Critical flows
 
 Sequence diagrams for the flows that **fail most often on first implementation** — including real-time messaging (SSE + Web Push) — plus the state machines for `Order` and `Invitation`. Each flow names the SDK primitives involved.

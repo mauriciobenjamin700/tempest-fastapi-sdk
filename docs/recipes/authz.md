@@ -1,3 +1,7 @@
+---
+description: "Use para autorização por objeto (este usuário pode editar este pedido?); contém registro de regras, proteção de rota, handlers async, bypass, fallback e `user.has_perm`."
+---
+
 # Permissões object-level
 
 Autorização baseada em **objeto** — "esse usuário pode editar **esse**

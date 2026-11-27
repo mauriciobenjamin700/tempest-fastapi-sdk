@@ -1,3 +1,7 @@
+---
+description: "IA generativa self-hosted: geração de texto, embeddings, VLM, moderação, cache, métricas e router."
+---
+
 # `tempest_fastapi_sdk.genai`
 
 IA generativa self-hosted: geração de texto, embeddings, VLM, moderação, cache, métricas e router.

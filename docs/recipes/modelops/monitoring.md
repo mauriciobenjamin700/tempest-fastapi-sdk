@@ -1,3 +1,7 @@
+---
+description: "Use para detectar drift do modelo em produção sem rótulo; contém os três sinais, baseline do treino, PSI, memória constante e exposição em HTTP e Prometheus."
+---
+
 # Saber se o modelo ainda funciona
 
 Use para monitorar drift em produção: três sinais, baseline do treino, PSI, memória constante, HTTP e Prometheus.

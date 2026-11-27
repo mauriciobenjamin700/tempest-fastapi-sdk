@@ -1,3 +1,7 @@
+---
+description: "Índice das receitas: tour do SDK com um exemplo por bloco (auth, cache, fila, IA, admin, CLI) e lista completa das receitas e dos exemplos completos."
+---
+
 # Receitas
 
 Passo a passo curtos no estilo "quero conectar X". Cada página começa com **qual problema resolve**, **quando recorrer a ela** e um exemplo de código completo que você pode copiar literalmente.

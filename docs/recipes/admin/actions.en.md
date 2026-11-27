@@ -1,3 +1,7 @@
+---
+description: "Use to add buttons that run your code via `@admin_action`: reveal a secret once, ask for input before running and create through a service."
+---
+
 # Custom actions
 
 Use to add buttons that run your code (`@admin_action`): show a secret once, ask for input before running, create through a service.

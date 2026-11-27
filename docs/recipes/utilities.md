@@ -1,3 +1,7 @@
+---
+description: "Use para achar helpers pequenos do SDK base; contém `utcnow`/`to_utc`, `get_client_ip`, tokens opacos, `generate_password`, `sign_path`, `form_encode` e contraste de cor."
+---
+
 # Utilitários diversos
 
 Helpers pequenos e sem estado do SDK base: nenhum extra, nenhuma

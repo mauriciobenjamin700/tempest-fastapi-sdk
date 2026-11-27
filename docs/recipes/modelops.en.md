@@ -1,3 +1,7 @@
+---
+description: "Index of the `modelops` module to quantize, measure and export models; covers extras installation and the table pointing to each task subpage."
+---
+
 # Modelops (export, bench, quantization)
 
 Three jobs that always travel together: you **quantize** to make a model

@@ -1,3 +1,7 @@
+---
+description: "Use para trocar os códigos de erro do fluxo de auth pelos códigos que seus clientes já tratam, via `AuthExceptions`, sem sobrescrever métodos."
+---
+
 # Códigos de erro do seu produto
 
 Use para trocar os códigos de erro do fluxo pelos do seu produto com `AuthExceptions`.

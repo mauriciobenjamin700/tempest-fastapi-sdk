@@ -1,3 +1,7 @@
+---
+description: "System-check framework — Django-style startup / config validation."
+---
+
 # API Reference: `tempest_fastapi_sdk.checks`
 
 System-check framework — Django-style startup / config validation.

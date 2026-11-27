@@ -1,3 +1,7 @@
+---
+description: "Use para subir o painel admin: modelo de usuário com `BaseUserModel`, registro das classes de admin ou `automap` e montagem do router."
+---
+
 # Montar o painel
 
 Use para subir o painel: modelo de usuário, registro das classes de admin (ou `automap`) e o router com tudo o que ele monta.

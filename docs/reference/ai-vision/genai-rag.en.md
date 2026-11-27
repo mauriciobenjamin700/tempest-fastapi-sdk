@@ -1,3 +1,7 @@
+---
+description: "RAG context — feed LLMs with web search + PDF knowledge."
+---
+
 # API Reference: `tempest_fastapi_sdk.genai.rag`
 
 RAG context — feed LLMs with web search + PDF knowledge.

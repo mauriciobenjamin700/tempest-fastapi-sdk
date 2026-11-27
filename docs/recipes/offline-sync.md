@@ -1,3 +1,7 @@
+---
+description: "Use para sincronizar app móvel ou PWA offline-first por delta, incluindo deletados; contém `BaseRepository.changes_since`, push idempotente, pull, endpoint e protocolo de watermark."
+---
+
 # Sync offline-first (delta)
 
 Apps móveis e PWAs trabalham offline: capturam dados sem rede e sincronizam

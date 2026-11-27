@@ -1,3 +1,7 @@
+---
+description: "Índice da camada de banco (SQLAlchemy 2.0 async, PostgreSQL/SQLite): modelo, conexão, repository, filtros, lote, mixins, paginação, migrações e queries lentas."
+---
+
 # Banco de dados
 
 Esta é a camada que toda service Tempest usa para falar com PostgreSQL

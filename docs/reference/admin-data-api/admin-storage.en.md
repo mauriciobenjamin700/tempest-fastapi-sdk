@@ -1,3 +1,7 @@
+---
+description: "The storage browser's data source: one bucket of an object store."
+---
+
 # API Reference: `tempest_fastapi_sdk.admin.storage`
 
 The storage browser's data source: one bucket of an object store.

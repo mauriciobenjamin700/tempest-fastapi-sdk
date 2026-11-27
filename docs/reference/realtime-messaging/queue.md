@@ -1,3 +1,7 @@
+---
+description: "Fila de mensagens sobre o FastStream: publisher, consumer, topologia, retry, dedup e tracing."
+---
+
 # `tempest_fastapi_sdk.queue`
 
 Fila de mensagens sobre o FastStream: publisher, consumer, topologia, retry, dedup e tracing.

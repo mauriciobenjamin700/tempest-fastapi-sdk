@@ -1,3 +1,7 @@
+---
+description: "Use to move slow work out of the request with `TaskQueue`; covers enqueueing, `enqueue_by_name`, worker resources via `on_startup`/`on_shutdown` and class-based tasks."
+---
+
 # Background tasks with `TaskQueue`
 
 Use to move slow work out of the request: enqueue, enqueue by name, worker resources and class-based tasks.

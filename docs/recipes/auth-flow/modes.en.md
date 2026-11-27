@@ -1,3 +1,7 @@
+---
+description: "Use to pick among the five flow modes (production, local SMTP, no SMTP, CI, backend-only) and run Mailhog or smtp4dev with docker-compose."
+---
+
 # Five operating modes and local SMTP
 
 Use to pick the mode (production, dev with local SMTP, dev without SMTP, CI, backend-only) and run Mailhog or smtp4dev.

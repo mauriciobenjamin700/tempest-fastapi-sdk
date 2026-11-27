@@ -1,3 +1,7 @@
+---
+description: "Use to run the service (`tempest serve`), open the console (`tempest shell`) and operate the database with `tempest db`: squash, backup, restore, drift and seed."
+---
+
 # Serve, console and database
 
 Use to run the service (`tempest serve`), open the console (`tempest shell`) and operate the database (`tempest db`).

@@ -1,3 +1,7 @@
+---
+description: "Use para testar webhooks do Mercado Pago em quatro níveis, de simulado sem rede à entrega real; contém `make_mercado_pago_router`, `MercadoPagoSimulator` e saque manual."
+---
+
 # Mercado Pago: testando webhooks
 
 Webhook é a parte mais difícil de testar de uma integração de pagamento: quem

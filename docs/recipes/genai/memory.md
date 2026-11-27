@@ -1,3 +1,7 @@
+---
+description: "Use quando o assistente precisa lembrar fatos entre conversas (`ChatMemory`), em memória ou no Postgres com pgvector."
+---
+
 # Memória de longo prazo
 
 Use quando o assistente precisa lembrar fatos entre conversas (`ChatMemory`), em memória ou no Postgres com pgvector.

@@ -1,3 +1,7 @@
+---
+description: "Tarefas em background sobre o TaskIQ: fila, agendador com lock e jobs persistidos."
+---
+
 # `tempest_fastapi_sdk.tasks`
 
 Tarefas em background sobre o TaskIQ: fila, agendador com lock e jobs persistidos.

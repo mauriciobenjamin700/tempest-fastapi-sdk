@@ -1,3 +1,7 @@
+---
+description: "Typed CSS: stylesheets, design tokens and the route that serves them."
+---
+
 # API Reference: `tempest_fastapi_sdk.ui.css`
 
 Typed CSS: stylesheets, design tokens and the route that serves them.

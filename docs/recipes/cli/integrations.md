@@ -1,3 +1,7 @@
+---
+description: "Use para gerar integrações e clientes OpenAPI, simular o Mercado Pago, operar agentes, exportar o contrato OpenAPI e gerar descrição de PR com `tempest pr-prompt`."
+---
+
 # Integrações, agentes e contrato OpenAPI
 
 Use para gerar integrações e clientes, simular o Mercado Pago, operar agentes, exportar o contrato OpenAPI e gerar descrição de PR com IA.

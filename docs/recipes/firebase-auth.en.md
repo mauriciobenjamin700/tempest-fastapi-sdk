@@ -1,3 +1,7 @@
+---
+description: "Use to verify the Firebase ID token sent by the app with `FirebaseAuth`; covers credentials, per-`code` errors, the soft variant, `check_revoked` and tests."
+---
+
 # Firebase auth (ID token)
 
 Your mobile app signs in with Firebase, gets an **ID token** and sends

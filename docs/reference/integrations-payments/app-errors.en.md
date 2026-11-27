@@ -1,3 +1,7 @@
+---
+description: "Errors the client application reports back to the service."
+---
+
 # API Reference: `tempest_fastapi_sdk.app_errors`
 
 Errors the client application reports back to the service.

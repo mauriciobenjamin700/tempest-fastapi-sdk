@@ -1,3 +1,7 @@
+---
+description: "Use to understand the router, controller, service, repository split; covers the required layout, exception envelope, layer patterns and `tempest lint-layers`."
+---
+
 # Architecture
 
 The SDK enforces a strict **router → controller → service → repository** layering. Every Tempest project follows the same shape, so a developer dropped into a new repo finds the file they need on the first try.

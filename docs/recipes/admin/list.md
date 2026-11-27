@@ -1,3 +1,7 @@
+---
+description: "Use para turbinar a listagem do admin: contagem de relacionados, import CSV/XLSX, duplicar, edição em massa, lenses e contagem em tabela grande."
+---
+
 # Listagem: contagens, import e edição em massa
 
 Use para turbinar a listagem: contagem de relacionados, import CSV/XLSX, duplicar, edição em massa, lenses e contagem em tabela grande.

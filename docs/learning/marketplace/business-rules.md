@@ -1,3 +1,7 @@
+---
+description: "Use para conhecer o contrato do domínio do marketplace: regras MUST/MAY numeradas de usuários, orgs, convites, estoque, carrinho, pedidos e quotas."
+---
+
 # Regras de negócio — Marketplace
 
 Esta página é o **contrato do domínio**. Toda decisão de modelagem, endpoint ou teste do projeto deve poder ser justificada por uma regra aqui. Quando o código discordar da regra, o código está errado (ou a regra precisa de uma RFC antes de mudar).

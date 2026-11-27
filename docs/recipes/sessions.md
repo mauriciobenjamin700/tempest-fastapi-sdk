@@ -1,3 +1,7 @@
+---
+description: "Use quando quiser auth por sessão server-side em vez de JWT; contém comparação, setup de `SessionAuth`, endpoints, settings, stores Memory/Redis, middleware e login sem tabela de usuário."
+---
+
 # Sessões server-side
 
 Desde v0.34.0 o SDK fornece o ciclo completo de autenticação baseada em **sessões server-side** — alternativa ao fluxo JWT do `UserAuthService`. O cookie carrega apenas um id opaco; estado real (user_id, TTL, metadata do cliente, payload da app) vive num **`SessionStore`** plugável (Memory pra dev/testes, Redis pra produção).

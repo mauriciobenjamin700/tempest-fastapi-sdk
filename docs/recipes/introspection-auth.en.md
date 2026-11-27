@@ -1,3 +1,7 @@
+---
+description: "Use when your service is a resource server validating opaque bearers upstream; covers `IntrospectionAuth`, `get_claims`, `audiences`, caching, custom claims and testing."
+---
+
 # Introspection auth (resource server)
 
 Not every service issues its own tokens. Often your service is just a

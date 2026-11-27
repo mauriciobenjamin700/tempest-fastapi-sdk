@@ -1,3 +1,7 @@
+---
+description: "Look up every architecture rule `tempest lint-layers` enforces (router, service, imports, file size, test suite), with its code, warning or error, and the fix."
+---
+
 # Layer rules: `tempest lint-layers`
 
 Look up every architecture rule `tempest lint-layers` enforces, with its code and how to fix it.

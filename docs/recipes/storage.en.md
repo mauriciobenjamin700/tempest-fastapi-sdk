@@ -1,3 +1,7 @@
+---
+description: "Use to store objects in MinIO/S3 with `AsyncMinIOClient`; covers settings, upload, streaming, `X-Accel-Redirect`, signed and presigned URLs, batch operations and a private bucket over HTTPS."
+---
+
 # Object storage — MinIO / S3
 
 `AsyncMinIOClient` is an async facade over the official `minio` package. It covers what a typical FastAPI service actually needs: buckets (ensure / exists / list / remove), object I/O (put / get / stream / stat / list / remove / copy) and presigned URLs (GET / PUT). Advanced operations (versioning, lifecycle XML, SSE-KMS, multipart fine-tuning) are reachable via the underlying `.client` attribute.

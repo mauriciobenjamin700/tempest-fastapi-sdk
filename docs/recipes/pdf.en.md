@@ -1,3 +1,7 @@
+---
+description: "Use to issue and read PDFs; covers typed payloads, five ready documents, an HTTP route, the CLI, custom templates, security, system libraries, reproducible output and page reading."
+---
+
 # PDFs
 
 Every service eventually has to issue a document: a receipt, a quote, a report,

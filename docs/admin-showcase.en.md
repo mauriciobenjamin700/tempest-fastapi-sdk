@@ -1,3 +1,7 @@
+---
+description: "Use to see the admin panel features combined in one store app: audit history, FK autocomplete, inlines, cards, CSV import and SSE + Web Push alerts."
+---
+
 # Integrated example — a complete shop admin
 
 This example wires **every** admin-panel feature into one app — a small

@@ -1,3 +1,7 @@
+---
+description: "A integração com o FastAPI: app factory, middlewares, routers prontos, dependências, OAuth, cookies, SPA e webhooks."
+---
+
 # `tempest_fastapi_sdk.api`
 
 A integração com o FastAPI: app factory, middlewares, routers prontos, dependências, OAuth, cookies, SPA e webhooks.

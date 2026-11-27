@@ -1,3 +1,7 @@
+---
+description: "Use para tirar GPS, aparelho e miniatura EXIF da foto enviada antes de guardar; contém rota de upload limpa, o que sai e fica, erros, teto de pixels e qualidade."
+---
+
 # Metadados de imagem — limpar a foto do usuário
 
 Uma foto tirada no celular carrega mais do que pixels. Dentro do arquivo vão

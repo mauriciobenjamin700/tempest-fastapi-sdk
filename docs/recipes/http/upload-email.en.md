@@ -1,3 +1,7 @@
+---
+description: "Use for an avatar endpoint with validation and cleanup and a password-reset flow with `EmailUtils`."
+---
+
 # File upload and transactional email
 
 Use for an avatar endpoint with validation and cleanup and a password-reset flow with `EmailUtils`.

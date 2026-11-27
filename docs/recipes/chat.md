@@ -1,3 +1,7 @@
+---
+description: "Use para adicionar chat com conversas e mensagens; contém as tabelas base, `ChatService` (resposta, recibos, anexos, reações, grupos), `make_chat_router` e tempo real via SSE."
+---
+
 # Chat (conversas + mensagens)
 
 Um módulo de chat encadeado pronto sobre os primitivos do SDK

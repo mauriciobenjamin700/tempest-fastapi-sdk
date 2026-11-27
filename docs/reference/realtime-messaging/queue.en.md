@@ -1,3 +1,7 @@
+---
+description: "FastStream-backed message queue primitives."
+---
+
 # API Reference: `tempest_fastapi_sdk.queue`
 
 FastStream-backed message queue primitives.

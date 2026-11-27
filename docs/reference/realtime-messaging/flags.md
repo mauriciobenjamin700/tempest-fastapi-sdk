@@ -1,3 +1,7 @@
+---
+description: "Feature flags: o serviço, os backends (memória, env, Redis, composto) e a dependência do FastAPI."
+---
+
 # `tempest_fastapi_sdk.flags`
 
 Feature flags: o serviço, os backends (memória, env, Redis, composto) e a dependência do FastAPI.

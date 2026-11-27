@@ -1,3 +1,7 @@
+---
+description: "Use para montar um agente de IA sobre modelos locais; contém extra por backend, `stop_reason`, orçamento, ferramentas tipadas, falha de ferramenta, HTTP e custo em CPU."
+---
+
 # Agentes de IA
 
 Um **agente** recebe um objetivo, decide o que fazer, chama ferramentas e

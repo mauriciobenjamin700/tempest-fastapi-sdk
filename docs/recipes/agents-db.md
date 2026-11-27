@@ -1,3 +1,7 @@
+---
+description: "Use quando a ferramenta do agente consulta o banco da aplicação: sessão por chamada, commit no context manager, um manager por processo e o parâmetro `context`."
+---
+
 # Agentes de IA (banco de dados)
 
 A primeira ferramenta útil que alguém escreve quase nunca é uma consulta ao

@@ -1,3 +1,7 @@
+---
+description: "Use to toggle features without redeploying with `FeatureFlags`; covers memory, env and Redis backends and the dependency that gates routes."
+---
+
 # Feature flags
 
 Turn features on and off **without a redeploy**: gradual rollouts, kill-switches, beta behind a flag. The SDK ships a `FeatureFlags` service over pluggable backends (static env, runtime Redis, or both layered) plus a FastAPI dependency that gates routes.

@@ -1,3 +1,7 @@
+---
+description: "Use para entender por que um endpoint está lento via EXPLAIN; contém `explain_queries`, o que cada banco entrega, escritas não reexecutadas e como ler o relatório."
+---
+
 # Planos de query (EXPLAIN)
 
 Ferramenta de desenvolvimento para a pergunta "por que esse endpoint está

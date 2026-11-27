@@ -1,3 +1,7 @@
+---
+description: "Use para injetar contexto na LLM: busca web (SearXNG), extração do corpo das páginas, leitura de PDFs e RAG sobre um corpus próprio."
+---
+
 # Contexto RAG
 
 Use para injetar contexto na LLM: busca web (SearXNG), extração do corpo das páginas, leitura de PDFs e RAG sobre um corpus próprio.

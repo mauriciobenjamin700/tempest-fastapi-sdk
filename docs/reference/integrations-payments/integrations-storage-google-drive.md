@@ -1,3 +1,7 @@
+---
+description: "Google Drive como backend de `UploadUtils`: upload para uma pasta compartilhada."
+---
+
 # `tempest_fastapi_sdk.integrations.storage.google_drive`
 
 Google Drive como backend de `UploadUtils`: upload para uma pasta compartilhada.

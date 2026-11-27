@@ -1,3 +1,7 @@
+---
+description: "Use on first contact with `modelops`; covers a runnable example on a bundled scikit-learn dataset, a guide to finding your case and the module's basic vocabulary."
+---
+
 # Start here
 
 Use the first time: an example that runs as is, which case is yours and the module's five words.

@@ -1,3 +1,7 @@
+---
+description: "Use to validate and normalize Brazilian data: CPF, CNPJ, phone, CEP, state and city, money in reais, plus `utcnow`, `to_utc` and `modify_dict`."
+---
+
 # Brazilian helpers
 
 Document validators (CPF, CNPJ, CEP) and phone number normalizer/validator for BR formats. Pure stdlib — no extra deps.

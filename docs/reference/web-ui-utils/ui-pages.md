@@ -1,3 +1,7 @@
+---
+description: "Páginas: uma classe por tela, composta de componentes."
+---
+
 # `tempest_fastapi_sdk.ui.pages`
 
 Páginas: uma classe por tela, composta de componentes.

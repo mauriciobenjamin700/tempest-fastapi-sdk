@@ -1,3 +1,7 @@
+---
+description: "Índice dos módulos: fila e tarefas, WebSocket e salas, SSE, Web Push e push unificado, chat, comentários, event sourcing, feature flags e MCP."
+---
+
 # Referência: Tempo real e mensageria
 
 Fila e tarefas, WebSocket e salas, SSE, Web Push e push unificado, chat, comentários, event sourcing, feature flags e MCP.

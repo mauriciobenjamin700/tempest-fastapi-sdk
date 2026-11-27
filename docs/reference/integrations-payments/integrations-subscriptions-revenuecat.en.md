@@ -1,3 +1,7 @@
+---
+description: "RevenueCat: in-app subscriptions from the App Store and Google Play."
+---
+
 # API Reference: `tempest_fastapi_sdk.integrations.subscriptions.revenuecat`
 
 RevenueCat: in-app subscriptions from the App Store and Google Play.

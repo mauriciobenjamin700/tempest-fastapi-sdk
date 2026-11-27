@@ -1,3 +1,7 @@
+---
+description: "O console SQL do admin e a política que decide quem roda o quê."
+---
+
 # `tempest_fastapi_sdk.admin.sql_shell`
 
 O console SQL do admin e a política que decide quem roda o quê.

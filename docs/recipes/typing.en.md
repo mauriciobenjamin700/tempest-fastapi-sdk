@@ -1,3 +1,7 @@
+---
+description: "Use to enforce static and runtime typing; covers linters, the pydantic plugin and `tempest_fastapi_sdk.mypy`, `[tool.tempest]`, `strict_types`, `typed` and `require_annotations`."
+---
+
 # Enforce typing (static + runtime)
 
 Type hints help your editor and mypy, but they are **erased at runtime**

@@ -1,3 +1,7 @@
+---
+description: "CSS tipado: stylesheets, design tokens e a rota que os serve."
+---
+
 # `tempest_fastapi_sdk.ui.css`
 
 CSS tipado: stylesheets, design tokens e a rota que os serve.

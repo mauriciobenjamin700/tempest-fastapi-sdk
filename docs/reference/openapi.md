@@ -1,3 +1,7 @@
+---
+description: "Índice dos módulos: os geradores de cliente tipado: HTTP a partir de um documento OpenAPI (`tempest openapi-client`) e WebSocket a partir de um documento AsyncAPI."
+---
+
 # Referência: Geração de cliente OpenAPI
 
 Os geradores de cliente tipado: HTTP a partir de um documento OpenAPI (`tempest openapi-client`) e WebSocket a partir de um documento AsyncAPI.

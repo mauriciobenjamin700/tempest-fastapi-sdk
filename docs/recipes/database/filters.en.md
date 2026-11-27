@@ -1,3 +1,7 @@
+---
+description: "Use to filter in the repository with `field__operator`; covers when a key or value is refused, how pagination inherits operators and the page-size wire name."
+---
+
 # 4. Convention-based filters
 
 Use to filter with `field__operator` and know when a key or value is refused and how pagination inherits the operators.

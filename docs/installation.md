@@ -1,3 +1,7 @@
+---
+description: "Use para instalar o SDK; contém a tabela de extras opcionais, GPU com `[genai-audio]` passo a passo, a CLI `tempest` e a política de versões do Python."
+---
+
 # Instalação
 
 ## Resumo

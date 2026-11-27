@@ -1,3 +1,7 @@
+---
+description: "Use to stitch audio, transcription, summary and suggestions into a staged pipeline; covers state columns, cancelling a running job, per-user usage accounting and the screen."
+---
+
 # Transcription pipeline — from audio to summary, in stages
 
 A fifty-minute meeting arrives as an upload and leaves as three different

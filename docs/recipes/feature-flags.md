@@ -1,3 +1,7 @@
+---
+description: "Use para ligar e desligar funcionalidade sem redeploy com `FeatureFlags`; cobre backends em memória, env e Redis e a dependência que protege rotas."
+---
+
 # Feature flags
 
 Ligue e desligue funcionalidades **sem redeploy**: rollouts graduais, kill-switches, beta por trás de um flag. O SDK traz um serviço `FeatureFlags` sobre backends plugáveis (env estático, Redis em runtime, ou os dois em camadas) e uma dependência FastAPI que protege rotas.

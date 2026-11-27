@@ -1,3 +1,7 @@
+---
+description: "Slide decks, answer keys and Markdown documents from plain text."
+---
+
 # API Reference: `tempest_fastapi_sdk.slides`
 
 Slide decks, answer keys and Markdown documents from plain text.

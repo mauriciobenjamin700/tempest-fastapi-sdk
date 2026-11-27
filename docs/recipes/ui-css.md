@@ -1,3 +1,7 @@
+---
+description: "Use para escrever CSS em Python conferido pelo type checker; contém regras como objeto, design tokens do `tempest_core`, servir a folha, folha pronta e nome de classe errado que falha."
+---
+
 # CSS tipado (StyleSheet e tokens)
 
 CSS escrito em Python, conferido pelo type checker e servido pelo próprio

@@ -1,3 +1,7 @@
+---
+description: "Use quando o cliente do jogo fala TCP cru em vez de WebSocket; mostra o servidor de salas em frames TCP ao lado do WebSocket e o cliente Android."
+---
+
 # Salas de jogo online (TCP)
 
 Alguns clientes não falam WebSocket, ou já têm todo o multiplayer escrito

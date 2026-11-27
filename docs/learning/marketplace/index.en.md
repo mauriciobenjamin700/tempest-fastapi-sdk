@@ -1,3 +1,7 @@
+---
+description: "Use to start the multi-tenant marketplace project: project pages, five-minute setup, SDK stack exercised, suggested layout and implementation order."
+---
+
 # 🛒 Product marketplace
 
 Multi-tenant sales platform **Mercado Livre / Shopee** style, no external integrations. The point is to exercise `tempest-fastapi-sdk` in a realistic scenario — auth, multi-tenant, RBAC, idempotency, auditable stock, orders with a state machine, real-time messaging (SSE + Web Push) for status and notifications, MinIO uploads, transactional email.

@@ -1,3 +1,7 @@
+---
+description: "Use se nunca usou ferramentas Python: instalar o `uv`, conferir, completar comandos no terminal, atualizar e o mapa dos comandos usados no dia a dia."
+---
+
 # Instalar o uv
 
 Esta é a primeira página da trilha para iniciantes. Ela assume **zero** conhecimento de ferramentas Python: se você nunca criou um ambiente virtual na vida, comece exatamente aqui.

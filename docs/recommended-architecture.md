@@ -1,3 +1,7 @@
+---
+description: "Use para dar forma a cada arquivo de um serviço conforme o `tempest check`; contém as nove regras com código, exceção declarada e como migrar um serviço existente."
+---
+
 # Arquitetura recomendada
 
 A página de [Arquitetura](architecture.md) diz **quais camadas existem**. Esta

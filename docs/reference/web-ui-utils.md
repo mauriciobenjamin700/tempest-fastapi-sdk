@@ -1,3 +1,7 @@
+---
+description: "Índice dos módulos: páginas SSR e a camada `ui`, utilitários, geolocalização, controle do host, system checks e as ferramentas de teste."
+---
+
 # Referência: Web, UI e utilitários
 
 Páginas SSR e a camada `ui`, utilitários, geolocalização, controle do host, system checks e as ferramentas de teste.

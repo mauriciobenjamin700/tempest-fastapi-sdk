@@ -1,3 +1,7 @@
+---
+description: "Use to expose service tools over MCP or consume another MCP server in an `Agent`; covers `mount_mcp`, auth, sessions, `add_agent_tools`, `add_fastapi_routes` and stdio."
+---
+
 # MCP (Model Context Protocol)
 
 [MCP](https://modelcontextprotocol.io) is the protocol an AI client (Claude

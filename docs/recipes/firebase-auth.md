@@ -1,3 +1,7 @@
+---
+description: "Use para validar o ID token do Firebase vindo do app com `FirebaseAuth`; cobre credencial, erros por `code`, variante soft, `check_revoked` e testes."
+---
+
 # Auth Firebase (ID token)
 
 O app mobile faz login no Firebase, recebe um **ID token** e manda esse

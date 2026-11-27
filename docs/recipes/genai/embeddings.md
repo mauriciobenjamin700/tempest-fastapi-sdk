@@ -1,3 +1,7 @@
+---
+description: "Use para gerar embeddings (torch ou ONNX), agrupar inferência concorrente em batch e compartilhar e inspecionar os modelos carregados."
+---
+
 # Embeddings e escala
 
 Use para gerar embeddings (torch ou ONNX), agrupar inferência concorrente em batch e compartilhar e inspecionar os modelos carregados.

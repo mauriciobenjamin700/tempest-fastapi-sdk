@@ -1,3 +1,7 @@
+---
+description: "Use antes de baixar pesos: sonda CPU, RAM e GPU (inclusive em container) e estima se o modelo cabe."
+---
+
 # A máquina aguenta? Hardware e estimativa
 
 Use antes de baixar pesos: sonda CPU, RAM e GPU (inclusive em container) e estima se o modelo cabe.

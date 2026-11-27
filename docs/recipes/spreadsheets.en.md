@@ -1,3 +1,7 @@
+---
+description: "Use to generate or read `.xlsx` spreadsheets; covers declared columns, Brazilian formats, live formulas, theming, download, reading Google Sheets and `.xlsx` files, and zip-bomb limits."
+---
+
 # Spreadsheets (.xlsx)
 
 A PDF is what you send when the numbers are final. A spreadsheet is what you

@@ -1,3 +1,7 @@
+---
+description: "Ciclo de vida dos pesos do HuggingFace que o serviço hospeda: download, cache e verificação."
+---
+
 # `tempest_fastapi_sdk.genai.hub`
 
 Ciclo de vida dos pesos do HuggingFace que o serviço hospeda: download, cache e verificação.

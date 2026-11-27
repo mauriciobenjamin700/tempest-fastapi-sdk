@@ -1,3 +1,7 @@
+---
+description: "Use to detect faces and compare whether two photos show the same person with `FaceRecognizer`; includes the LGPD warning, model packs and measured margin."
+---
+
 # Face recognition
 
 Finds faces in an image and turns each one into a comparable vector — enough

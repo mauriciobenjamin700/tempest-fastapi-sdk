@@ -1,3 +1,7 @@
+---
+description: "Use para tirar trânsito por trecho e ruas ausentes do mapa das posições GPS da frota; cobre `match_to_roads`, `TrafficAggregator` e as regras de privacidade."
+---
+
 # Trânsito da frota (GPS anônimo)
 
 A frota já manda posição ao vivo (receita de [Localização ao vivo](live-location.md)).

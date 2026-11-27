@@ -1,3 +1,7 @@
+---
+description: "Server-side rendering: typed Python components rendered to HTML."
+---
+
 # API Reference: `tempest_fastapi_sdk.ssr`
 
 Server-side rendering: typed Python components rendered to HTML.

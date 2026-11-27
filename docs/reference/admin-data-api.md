@@ -1,3 +1,7 @@
+---
+description: "Índice dos módulos de admin, dados e API: painel admin, models, repository, sessão, migrations, FastAPI, auth, authz, sessões, exceções, schemas base e settings."
+---
+
 # Referência: Admin, dados e API
 
 O painel admin, a camada de dados (models, repository, sessão, migrations), a integração com o FastAPI, autenticação, autorização e sessões, as exceções, os schemas base e as settings.

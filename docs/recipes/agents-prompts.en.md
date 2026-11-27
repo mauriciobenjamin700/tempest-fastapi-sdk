@@ -1,3 +1,7 @@
+---
+description: "Use to organize agent system prompts: the `prompts/` folder, anatomy, what the SDK already injects, per-request prompts, what to avoid and how to test."
+---
+
 # AI agents (prompts)
 
 The system prompt is the only text the model reads on **every** turn of the

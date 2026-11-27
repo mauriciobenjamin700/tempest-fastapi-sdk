@@ -1,3 +1,7 @@
+---
+description: "Index of the local-account flow (signup, activation, login, reset) with `UserAuthService` and `make_auth_router`; maps each task to its subpage, plus security and recap."
+---
+
 # Bundled auth flow (signup / activate / login / reset)
 
 Since v0.31.0 the SDK ships the full local-account lifecycle — email + password signup, link-based activation, JWT-pair login, password reset — via `UserAuthService` + `make_auth_router`. **Endpoints ready to mount** (including `POST /auth/refresh` since v0.65.0), Jinja2 templates bundled, settings flags decide whether the link is emailed or returned in the response body, and five pre-thought modes: production, dev with local SMTP, dev without SMTP, CI and backend-only.

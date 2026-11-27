@@ -1,3 +1,7 @@
+---
+description: "Registro de artefatos binários versionados: no banco, ativáveis e com digest."
+---
+
 # `tempest_fastapi_sdk.artifacts`
 
 Registro de artefatos binários versionados: no banco, ativáveis e com digest.

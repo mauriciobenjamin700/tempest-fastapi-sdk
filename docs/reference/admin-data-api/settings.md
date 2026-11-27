@@ -1,3 +1,7 @@
+---
+description: "`BaseAppSettings`, os mixins de settings compostos e as credenciais tipadas."
+---
+
 # `tempest_fastapi_sdk.settings`
 
 `BaseAppSettings`, os mixins de settings compostos e as credenciais tipadas.

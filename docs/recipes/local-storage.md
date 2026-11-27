@@ -1,3 +1,7 @@
+---
+description: "Use para guardar arquivos em disco local sem servidor S3; contém `LocalObjectStorageClient`, links pela API, upload com teto, escolha por settings e cifra em repouso."
+---
+
 # Storage em disco local — `LocalObjectStorageClient`
 
 Seu serviço guarda fotos, exportações e anexos, e até agora isso pedia um

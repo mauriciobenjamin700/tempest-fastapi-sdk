@@ -1,3 +1,7 @@
+---
+description: "Event sourcing: o protocolo de event store com backends SQL e KurrentDB."
+---
+
 # `tempest_fastapi_sdk.eventsourcing`
 
 Event sourcing: o protocolo de event store com backends SQL e KurrentDB.

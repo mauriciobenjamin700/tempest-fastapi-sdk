@@ -1,3 +1,7 @@
+---
+description: "Model Context Protocol, both directions, over FastMCP."
+---
+
 # API Reference: `tempest_fastapi_sdk.mcp`
 
 Model Context Protocol, both directions, over FastMCP.

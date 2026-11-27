@@ -1,3 +1,7 @@
+---
+description: "Use para atender pedido LGPD de exportação e exclusão de dados do titular; contém banco desenhado para apagar, guard no CI, exportar e excluir linhas e arquivos, e upload sob prefixo."
+---
+
 # Exportação e exclusão de titular (LGPD)
 
 A LGPD (art. 18) dá ao titular o direito de pedir **cópia** de tudo que você

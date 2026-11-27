@@ -1,3 +1,7 @@
+---
+description: "Self-hosted audio — speech-to-text and text-to-speech on your hardware."
+---
+
 # API Reference: `tempest_fastapi_sdk.genai.audio`
 
 Self-hosted audio — speech-to-text and text-to-speech on your hardware.

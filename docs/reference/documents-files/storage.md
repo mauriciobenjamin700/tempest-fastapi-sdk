@@ -1,3 +1,7 @@
+---
+description: "Object storage (MinIO, S3 ou disco local), upload resumível (tus) e os clientes de storage."
+---
+
 # `tempest_fastapi_sdk.storage`
 
 Object storage (MinIO, S3 ou disco local), upload resumível (tus) e os clientes de storage.

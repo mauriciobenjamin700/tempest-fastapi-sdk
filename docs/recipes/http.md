@@ -1,3 +1,7 @@
+---
+description: "Índice da camada HTTP de entrada: aponta a subpágina de bootstrap, JWT, auth, rate limit, body e cache, webhooks, upload e extras."
+---
+
 # Camada HTTP
 
 Middlewares, dependências, routers e composição de middleware para a superfície da API.

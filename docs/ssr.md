@@ -1,3 +1,7 @@
+---
+description: "Use para renderizar páginas HTML a partir de componentes Python tipados; contém `Page`, `html_response`, `shell()`, widgets, `Style`, formulários, HTMX local e servir build do tempestweb."
+---
+
 # SSR: páginas tipadas em Python renderizadas para HTML
 
 Seu serviço FastAPI, full-stack, **tipado**, sem linguagem de template. 🚀

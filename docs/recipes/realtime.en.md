@@ -1,3 +1,7 @@
+---
+description: "Real-time index: use to choose how to push data to clients without polling; points to the SSE recipe (page open) and the Web Push recipe (page closed)."
+---
+
 # Real-time
 
 Push data to clients without the client polling. SSE for server→browser broadcasts while the page is open; for notifications that arrive even when the page is closed, see the dedicated [Web Push](webpush.md) recipe.

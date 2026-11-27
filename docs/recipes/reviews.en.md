@@ -1,3 +1,7 @@
+---
+description: "Use to add threaded comments and 0-to-5-star ratings to any entity without a table per type; covers `BaseCommentModel`, `BaseRatingModel`, the service and the router."
+---
+
 # Comments + ratings
 
 Comments and **0-to-5-star** ratings on anything — product, post, event

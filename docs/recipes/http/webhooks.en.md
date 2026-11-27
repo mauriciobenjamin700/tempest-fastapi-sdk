@@ -1,3 +1,7 @@
+---
+description: "Use to validate incoming signed webhooks (HMAC or RSA) and deliver outgoing webhooks with `WebhookSender`."
+---
+
 # Webhooks: verify and send
 
 Use to validate incoming signed webhooks (HMAC or RSA) and deliver outgoing webhooks with `WebhookSender`.

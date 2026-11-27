@@ -1,3 +1,7 @@
+---
+description: "Use to declare pre-validated schema fields (`*Field` types for int, float, decimal, string, locale and Pix key) and compose your own."
+---
+
 # Validated fields (ready-made types)
 
 Instead of repeating `Field(gt=0, ...)` on every schema, the SDK ships

@@ -1,3 +1,7 @@
+---
+description: "Use antes de deploy: `safe_upgrade` barra migration destrutiva, `DatabaseBackup` faz pg_dump e o graceful shutdown drena requests no `SIGTERM`."
+---
+
 # Deploy seguro (migrações + graceful shutdown)
 
 Dois riscos clássicos de deploy: uma migration que **apaga dados** sem

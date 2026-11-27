@@ -1,3 +1,7 @@
+---
+description: "Use as the citable reference for laying out a Tempest service; covers what `tempest new` generates, each standard item with the gate enforcing it and `tempest generate --standard`."
+---
+
 # Service standard
 
 This page is the **citable reference** for how a Tempest service is laid

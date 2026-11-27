@@ -1,3 +1,7 @@
+---
+description: "Use para testar cadastro, ativação, login e rota protegida sem frontend (curl, Swagger, mobile); contém app num arquivo, `.env` de dev e o ciclo num teste."
+---
+
 # Só o backend: do cadastro à rota protegida
 
 Use para testar cadastro → ativação → login → rota protegida sem frontend (curl, Swagger, app mobile) e o mesmo ciclo num teste.

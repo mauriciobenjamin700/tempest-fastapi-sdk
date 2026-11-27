@@ -1,3 +1,7 @@
+---
+description: "Use ao mapear enum para coluna: o que o SDK muda no default do SQLAlchemy, `CHECK`, tipo ENUM no Postgres e como migrar, renomear e fazer downgrade."
+---
+
 # Colunas de enum (seguras nos dois bancos)
 
 O SQLAlchemy já mapeia `Mapped[MeuEnum]` para uma coluna. Os defaults

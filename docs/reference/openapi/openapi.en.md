@@ -1,3 +1,7 @@
+---
+description: "Generate Pydantic schemas + a typed HTTP client from an OpenAPI spec."
+---
+
 # API Reference: `tempest_fastapi_sdk.openapi`
 
 Generate Pydantic schemas + a typed HTTP client from an OpenAPI spec.

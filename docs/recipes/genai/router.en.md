@@ -1,3 +1,7 @@
+---
+description: "Use to expose the module over HTTP with `make_genai_router` and share the embedding cache across workers with `RedisEmbeddingCache`."
+---
+
 # Ready endpoints and Redis cache
 
 Use to expose the module over HTTP with `make_genai_router` and share the embedding cache across workers with `RedisEmbeddingCache`.

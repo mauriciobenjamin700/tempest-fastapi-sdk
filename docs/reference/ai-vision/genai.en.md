@@ -1,3 +1,7 @@
+---
+description: "Self-hosted generative AI — run HuggingFace models on your own hardware."
+---
+
 # API Reference: `tempest_fastapi_sdk.genai`
 
 Self-hosted generative AI — run HuggingFace models on your own hardware.

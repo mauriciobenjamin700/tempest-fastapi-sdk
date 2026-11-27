@@ -1,3 +1,7 @@
+---
+description: "Application exception primitives exposed at module level."
+---
+
 # API Reference: `tempest_fastapi_sdk.exceptions`
 
 Application exception primitives exposed at module level.

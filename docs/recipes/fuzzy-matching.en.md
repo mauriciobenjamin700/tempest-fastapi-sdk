@@ -1,3 +1,7 @@
+---
+description: "Use to match typed text against known names and find cities in text; covers `FuzzyIndex`, `parse_trip_intent`, semantic search and an agent tool."
+---
+
 # Fuzzy matching and cities in text
 
 The user writes "moro em sao jose dos campos - sp", "vou pra floripa" or

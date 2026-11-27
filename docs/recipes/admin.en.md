@@ -1,3 +1,7 @@
+---
+description: "Use to get a Django-style admin panel under `/admin`; covers what it provides, installation and the index of per-task subpages."
+---
+
 # Admin site
 
 

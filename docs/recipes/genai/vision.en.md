@@ -1,3 +1,7 @@
+---
+description: "Use to ask a locally running vision-language model about an image with `VisionTextGenerator`."
+---
+
 # Multimodal vision (local VLM)
 
 Use to ask a locally running vision-language model about an image.

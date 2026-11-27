@@ -1,3 +1,7 @@
+---
+description: "Use to tune the admin form: `choices`, uploads, FK autocomplete, inlines, many-to-many, widgets, password fields and `exclude_fields`."
+---
+
 # Form fields
 
 Use to tune the form: choices, file upload, autocomplete FKs, inlines, many-to-many, widgets, passwords and hidden columns.

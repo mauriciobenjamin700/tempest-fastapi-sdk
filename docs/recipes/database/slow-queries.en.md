@@ -1,3 +1,7 @@
+---
+description: "Use to log every query above a threshold with `SlowQueryLogger`, a listener attached to the engine at boot."
+---
+
 # 9. Detect slow queries
 
 Use to log queries above a threshold with `SlowQueryLogger`.

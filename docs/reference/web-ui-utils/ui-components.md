@@ -1,3 +1,7 @@
+---
+description: "Componentes: as peças reutilizáveis de que as páginas são feitas."
+---
+
 # `tempest_fastapi_sdk.ui.components`
 
 Componentes: as peças reutilizáveis de que as páginas são feitas.

@@ -1,3 +1,7 @@
+---
+description: "Use to build a fullstack tempestweb app in typed Python; three complete projects: SSR + HTMX, a Pyodide WASM SPA and WebSocket/SSE server mode."
+---
+
 # Fullstack web — SSR, WASM and server
 
 The SDK talks to **tempestweb** in three ways, all fullstack and all

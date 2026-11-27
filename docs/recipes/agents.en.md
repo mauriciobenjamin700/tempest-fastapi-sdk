@@ -1,3 +1,7 @@
+---
+description: "Use to build an AI agent over local models; covers extra per backend, `stop_reason`, budget, typed tools, tool failures, HTTP serving and CPU cost."
+---
+
 # AI agents
 
 An **agent** takes a goal, decides what to do, calls tools, and reports what

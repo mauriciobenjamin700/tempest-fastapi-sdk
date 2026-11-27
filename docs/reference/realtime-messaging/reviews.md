@@ -1,3 +1,7 @@
+---
+description: "Comentários e avaliações de 0 a 5 estrelas sobre qualquer alvo."
+---
+
 # `tempest_fastapi_sdk.reviews`
 
 Comentários e avaliações de 0 a 5 estrelas sobre qualquer alvo.

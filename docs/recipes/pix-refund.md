@@ -1,3 +1,7 @@
+---
+description: "Use para estornar Pix com retry seguro, sem estorno duplo; contém `PixRefundProvider`, estorno parcial, roteador de provedores e como cada provedor garante idempotência."
+---
+
 # Estorno de Pix (idempotente)
 
 Um passageiro cancela a passagem. Seu serviço devolve o dinheiro por Pix,

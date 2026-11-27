@@ -1,3 +1,7 @@
+---
+description: "Use para que link compartilhado no WhatsApp ou redes mostre prévia; contém página Open Graph por item, item indisponível, card PNG, cache e versão, link público e fonte no Docker."
+---
+
 # Compartilhar com prévia (Open Graph)
 
 Quando alguém cola um link no WhatsApp, no Telegram, no Instagram ou no X, a

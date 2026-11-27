@@ -1,3 +1,7 @@
+---
+description: "Use para obter credenciais de teste do Mercado Pago que funcionam; contém o passo a passo da conta vendedora, aplicação, Access Token, cartões de teste, Pix e erros comuns."
+---
+
 # Mercado Pago: contas e credenciais de teste
 
 Antes de cobrar de verdade, você quer ver um Pix nascer, um cartão ser

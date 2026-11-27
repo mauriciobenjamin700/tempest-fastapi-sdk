@@ -1,3 +1,7 @@
+---
+description: "Use to store facts instead of state; covers `SqlEventStore` and `KurrentDBEventStore`, optimistic concurrency, outbox, projections and aggregates."
+---
+
 # Event sourcing (event store)
 
 Instead of storing an order's current state in a row you update, you store

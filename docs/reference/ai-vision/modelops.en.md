@@ -1,3 +1,7 @@
+---
+description: "Model ops — export, quantize and benchmark the models a service serves."
+---
+
 # API Reference: `tempest_fastapi_sdk.modelops`
 
 Model ops — export, quantize and benchmark the models a service serves.

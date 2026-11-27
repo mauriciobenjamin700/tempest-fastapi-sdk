@@ -1,3 +1,7 @@
+---
+description: "Use para publicar evento atômico com a escrita no banco e evitar o dual-write; contém a tabela outbox, gravação na mesma transação, relay, retry e drenagem única."
+---
+
 # Outbox transacional (eventos confiáveis)
 
 Quando um handler **grava uma linha** e **publica um evento**, fazer as

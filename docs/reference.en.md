@@ -1,3 +1,7 @@
+---
+description: "Use to look up a symbol's signature, parameters and exceptions; index of the reference generated from the docstrings, by theme and module."
+---
+
 # API Reference
 
 The full API reference is auto-generated from the SDK's English docstrings via

@@ -1,3 +1,7 @@
+---
+description: "Use to record an append-only create/update/delete history in the same transaction; covers `BaseAuditLogModel`, `add_audited`, `update_audited`, actor, origin and `columns=`."
+---
+
 # Audit trail
 
 `AuditMixin` records **who** last touched a row (`created_by` /

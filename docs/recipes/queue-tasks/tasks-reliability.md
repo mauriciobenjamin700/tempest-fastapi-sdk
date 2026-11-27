@@ -1,3 +1,7 @@
+---
+description: "Use para ligar confiabilidade nas tarefas em background; contém `RetryPolicy` tipado, dead-letter de falha terminal, métricas Prometheus por tarefa e painel no admin."
+---
+
 # Confiabilidade e observabilidade das tarefas
 
 Use para ligar retry tipado, dead-letter, métricas Prometheus por tarefa e o painel de dead-letter no admin.

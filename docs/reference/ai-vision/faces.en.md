@@ -1,3 +1,7 @@
+---
+description: "Face detection and recognition on ONNX Runtime."
+---
+
 # API Reference: `tempest_fastapi_sdk.faces`
 
 Face detection and recognition on ONNX Runtime.

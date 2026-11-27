@@ -1,3 +1,7 @@
+---
+description: "Use for SSR panel actions that confirm, notify and return to the originating screen; covers confirm-before-remove, read-once flash, redirect back without open redirect and exceptions."
+---
+
 # SSR actions: confirmation, flash and redirect back
 
 Every SSR panel repeats the same flow on each action:

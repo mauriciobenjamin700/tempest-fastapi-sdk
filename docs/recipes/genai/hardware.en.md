@@ -1,3 +1,7 @@
+---
+description: "Use before downloading weights: probe CPU, RAM and GPU (containers included) and estimate whether the model fits."
+---
+
 # Can the machine handle it? Hardware and estimates
 
 Use before downloading weights: probe CPU, RAM and GPU (containers included) and estimate whether the model fits.

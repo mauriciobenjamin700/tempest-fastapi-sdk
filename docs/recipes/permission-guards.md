@@ -1,3 +1,7 @@
+---
+description: "Use para checar invariantes de autorização antes da função com `@requires`; contém escrever guards, estreitamento de tipo, `code`, metadata, `include_args` e `tempest permissions`."
+---
+
 # Guards de permissão (`@requires`)
 
 Você já tem o usuário na mão — veio de uma dependência, de um parâmetro de

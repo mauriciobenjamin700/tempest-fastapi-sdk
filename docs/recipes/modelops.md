@@ -1,3 +1,7 @@
+---
+description: "Índice do módulo `modelops` para quantizar, medir e exportar modelos; contém instalação dos extras e a tabela que leva à subpágina de cada tarefa."
+---
+
 # Modelops (export, bench, quantização)
 
 Três trabalhos que sempre andam juntos: você **quantiza** pra deixar o

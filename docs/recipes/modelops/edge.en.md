@@ -1,3 +1,7 @@
+---
+description: "Use to serve the model at the edge on GPU or over HTTP and swap it without a redeploy; covers the edge bundle with its manifest and what is worth optimizing, measured."
+---
+
 # Serve at the edge and publish the bundle
 
 Use to serve the model (with a GPU or over HTTP), swap it without a redeploy, publish the edge bundle and know what is worth optimizing.

@@ -1,3 +1,7 @@
+---
+description: "Use para publicar e consumir eventos por channel com `MessageBroker`; contém consumidores e publicadores em classe e Kafka com chave, grupo, commit e `KafkaSettings`."
+---
+
 # Mensageria com `MessageBroker`
 
 Use para publicar e consumir eventos por channel, com consumidores e publicadores em classe e Kafka (chave, grupo e commit).

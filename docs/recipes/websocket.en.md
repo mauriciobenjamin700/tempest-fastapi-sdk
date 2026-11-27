@@ -1,3 +1,7 @@
+---
+description: "Use for a bidirectional channel with `make_websocket_router` and `WebSocketHub`; covers the required extra, handshake bearer auth, a JS client, per-user and topic broadcast, and heartbeat."
+---
+
 # WebSocket router
 
 Since v0.33.0 the SDK ships `make_websocket_router` + `WebSocketHub` — the bidirectional counterpart to SSE, with bearer auth at the handshake, automatic ping/pong heartbeats and a central registry for broadcast / per-user / topic-scoped delivery.

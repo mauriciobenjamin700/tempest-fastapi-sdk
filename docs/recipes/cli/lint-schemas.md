@@ -1,3 +1,7 @@
+---
+description: "Use para exigir `title`, `description` e `examples` nos campos de schema que chegam ao `openapi.json`, com o comando `tempest lint-schemas`."
+---
+
 # Metadado de schema: `tempest lint-schemas`
 
 Use para cobrar `title`, `description` e `examples` nos campos dos schemas que chegam ao `openapi.json`.

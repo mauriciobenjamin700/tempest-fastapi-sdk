@@ -1,3 +1,7 @@
+---
+description: "Use quando uma entidade guarda uma chave de storage (avatar, anexo); contém `StoredFileServiceMixin` com `set_file`, `file_url`, `file_urls` e `clear_file`, e vários campos."
+---
+
 # Arquivo no serviço — `StoredFileServiceMixin`
 
 Uma entidade quase sempre carrega **uma** chave de storage: o avatar do

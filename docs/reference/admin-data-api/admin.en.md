@@ -1,3 +1,7 @@
+---
+description: "Django-admin-style management UI for FastAPI services."
+---
+
 # API Reference: `tempest_fastapi_sdk.admin`
 
 Django-admin-style management UI for FastAPI services.

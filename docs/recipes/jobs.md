@@ -1,3 +1,7 @@
+---
+description: "Use para dar status a trabalho longo enfileirado; contém tabela de job, worker, polling, recuperar job de worker morto, listar, cancelar, progresso e estágios."
+---
+
 # Jobs — trabalho longo com status
 
 Uma fila entrega a chamada ao worker. Ela não responde nada do que a

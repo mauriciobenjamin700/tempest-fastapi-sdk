@@ -1,3 +1,7 @@
+---
+description: "Use para cobrar cartão, assinatura ou Checkout pela Stripe sem extra; contém o caminho mínimo, corpo form-encoded, moeda, verificação de webhook, idempotência, paginação, erros e testes."
+---
+
 # Stripe (cartão, assinatura, Checkout)
 
 Todo serviço nosso que cobra cartão reescrevia a mesma camada Stripe:

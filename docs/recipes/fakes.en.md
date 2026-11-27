@@ -1,3 +1,7 @@
+---
+description: "Use to run and test the service with no real provider: fakes for Pix, card, email, text model, structured output, geo and files, and how to wire them."
+---
+
 # Fakes: run the whole flow with no provider at all
 
 Your service charges over Pix, emails an activation link, fires a push,

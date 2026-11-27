@@ -1,3 +1,7 @@
+---
+description: "Use to render HTML pages from typed Python components; covers `Page`, `html_response`, `shell()`, widgets, `Style`, forms, local HTMX and serving a tempestweb build."
+---
+
 # SSR: typed Python pages rendered to HTML
 
 Your FastAPI service, full-stack, **typed**, with no template language. 🚀

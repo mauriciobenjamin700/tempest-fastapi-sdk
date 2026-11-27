@@ -1,3 +1,7 @@
+---
+description: "As classes base da camada de serviço e de controller, e o mixin de serviço com arquivo armazenado."
+---
+
 # `tempest_fastapi_sdk.services`, `tempest_fastapi_sdk.controllers`
 
 As classes base da camada de serviço e de controller, e o mixin de serviço com arquivo armazenado.

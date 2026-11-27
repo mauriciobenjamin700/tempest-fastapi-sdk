@@ -1,3 +1,7 @@
+---
+description: "Local image generation over HuggingFace diffusers."
+---
+
 # API Reference: `tempest_fastapi_sdk.genai.image`
 
 Local image generation over HuggingFace diffusers.

@@ -1,3 +1,7 @@
+---
+description: "Use to call external services with `HTTPClient` over httpx: retry with backoff, circuit breaker, timeouts, `X-Request-ID` and `async_retry`."
+---
+
 # HTTP client (outbound)
 
 `HTTPClient` is a typed wrapper over `httpx.AsyncClient` for **calling

@@ -1,3 +1,7 @@
+---
+description: "Use para gerar QR Code com logo e moldura compartilhável; contém quanto logo cabe com correção `H`, a moldura com foto e trajeto e as rotas de um link de carona."
+---
+
 # QR Code com logo e moldura (link de carona)
 
 Um QR Code impresso no vidro do carro, num cartaz da rodoviária ou numa

@@ -1,3 +1,7 @@
+---
+description: "Use to derive per-segment traffic and roads missing from the map out of fleet GPS positions; covers `match_to_roads`, `TrafficAggregator` and privacy rules."
+---
+
 # Fleet traffic (anonymous GPS)
 
 Your fleet already sends live positions (see the [Live location](live-location.md)

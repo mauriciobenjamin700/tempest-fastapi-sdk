@@ -1,3 +1,7 @@
+---
+description: "Use to serve a React (Vite) SPA from the FastAPI process in one deployment; covers the dev proxy, `make_spa_router` with CSP, auth with `tempest-react-sdk` and a multi-stage Dockerfile."
+---
+
 # A React SPA inside FastAPI
 
 This recipe builds a fullstack stack with **a single deployment**: a React SPA

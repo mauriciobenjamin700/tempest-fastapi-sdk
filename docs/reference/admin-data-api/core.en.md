@@ -1,3 +1,7 @@
+---
+description: "Core cross-cutting primitives: logging, context, configuration."
+---
+
 # API Reference: `tempest_fastapi_sdk.core`
 
 Core cross-cutting primitives: logging, context, configuration.

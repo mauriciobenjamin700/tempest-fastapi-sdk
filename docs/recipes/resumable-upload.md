@@ -1,3 +1,7 @@
+---
+description: "Use para aceitar upload que retoma de onde parou (protocolo tus) com `make_tus_router`; contém `on_complete`, dono, `Idempotency-Key`, `S3TusStore`, expiração, limites e CORS."
+---
+
 # Upload resumível (tus)
 
 O técnico de campo tira dez fotos sem sinal; quando a rede volta, elas sobem — e se a

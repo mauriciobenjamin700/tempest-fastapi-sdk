@@ -1,3 +1,7 @@
+---
+description: "Use para manter saldo por pessoa e pagar saque Pix sem crédito perdido nem saque em dobro; contém modelos, crédito com retenção, saque OpenPix ou manual, taxa, `WalletLedger` e router."
+---
+
 # Carteira e saque Pix
 
 Plataforma que recebe por Pix e repassa para alguém — motorista, artista,

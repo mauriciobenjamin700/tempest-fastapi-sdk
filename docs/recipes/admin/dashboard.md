@@ -1,3 +1,7 @@
+---
+description: "Use para pôr métricas de negócio no dashboard do admin: `dashboard_cards`, áreas de indicadores com thresholds e mapa de distribuição geográfica."
+---
+
 # Dashboard: cards, indicadores e mapa
 
 Use para pôr métricas de negócio no dashboard: cards, áreas de indicadores com thresholds e o mapa de distribuição geográfica.

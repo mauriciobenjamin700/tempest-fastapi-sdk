@@ -1,3 +1,7 @@
+---
+description: "Index of learning projects built on the SDK, with business rules, UML, endpoint map and tests; how to use the section and planned projects."
+---
+
 # Learning projects
 
 This section collects didactic projects built **entirely on top of `tempest-fastapi-sdk`** so you can learn the SDK in a practical setting. Each project ships:

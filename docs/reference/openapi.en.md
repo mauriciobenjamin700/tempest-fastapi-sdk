@@ -1,3 +1,7 @@
+---
+description: "Index of the typed client generators: HTTP from an OpenAPI document (`tempest openapi-client`) and WebSocket from an AsyncAPI document."
+---
+
 # API Reference: OpenAPI code generation
 
 The API reference is generated from the SDK's English docstrings via

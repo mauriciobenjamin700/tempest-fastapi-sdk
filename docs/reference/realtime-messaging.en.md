@@ -1,3 +1,7 @@
+---
+description: "Index of the real-time modules: queue and tasks, WebSocket and rooms, SSE, Web Push and unified push, chat, comments, event sourcing, feature flags and MCP."
+---
+
 # API Reference: Real time and messaging
 
 The API reference is generated from the SDK's English docstrings via

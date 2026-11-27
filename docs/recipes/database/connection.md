@@ -1,3 +1,7 @@
+---
+description: "Use para abrir engine e sessão com `AsyncDatabaseManager`: sessão por request, lifespan, health check, uso fora de request e SQLite com WAL e chave estrangeira."
+---
+
 # 2. Conectar ao banco
 
 Use para abrir engine e sessão com `AsyncDatabaseManager`: sessão por request, lifespan, health check, uso fora de request e SQLite (WAL, chave estrangeira).

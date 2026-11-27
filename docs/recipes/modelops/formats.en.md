@@ -1,3 +1,7 @@
+---
+description: "Use to fuse a detector and a classifier into one `.onnx`, convert to `.ort`, optimize the graph and inspect without running; covers the report via an API and the CLI."
+---
+
 # Fuse, `.ort`, inspect, API and CLI
 
 Use to fuse a detector and a classifier, convert `.onnx` to `.ort`, inspect without running and expose the report through an API or the CLI.

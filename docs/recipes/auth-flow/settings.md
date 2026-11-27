@@ -1,3 +1,7 @@
+---
+description: "Consulte as variáveis de ambiente do fluxo de auth por grupo tipado: JWT, senha, e-mail, TTL, URLs, páginas, idioma, entrega de token, OAuth e conta desativada."
+---
+
 # Settings: variáveis de ambiente
 
 Consulte as variáveis de ambiente do fluxo em grupos tipados: JWT, política de senha, e-mail, TTL, URLs, páginas, idioma, entrega de token e mais.

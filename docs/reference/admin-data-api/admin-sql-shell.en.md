@@ -1,3 +1,7 @@
+---
+description: "A SQL console for the admin, with a policy in front of it."
+---
+
 # API Reference: `tempest_fastapi_sdk.admin.sql_shell`
 
 A SQL console for the admin, with a policy in front of it.

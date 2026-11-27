@@ -1,3 +1,7 @@
+---
+description: "Use for distance, travel time, routes and geocoding without a paid API; covers Haversine, OSRM, radius search in the database, geofencing and Brazil CEP/UF."
+---
+
 # Geolocation (distance + time)
 
 Need to know **how many km** separate two points and **how long** the trip

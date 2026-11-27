@@ -1,3 +1,7 @@
+---
+description: "Use para expor detecção, classificação e segmentação em ONNX numa API; contém schemas e mappers de resposta, grafo combinado, inputs aceitos e `make_vision_router` com limites."
+---
+
 # Visão computacional (ONNX)
 
 APIs de classificação, detecção e segmentação rodando em ONNX Runtime,

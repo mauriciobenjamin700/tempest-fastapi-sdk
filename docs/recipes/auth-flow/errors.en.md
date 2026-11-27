@@ -1,3 +1,7 @@
+---
+description: "Use to replace the auth flow's error codes with the ones your clients already handle, via `AuthExceptions`, without overriding methods."
+---
+
 # Your product's error codes
 
 Use to replace the flow's error codes with your product's own via `AuthExceptions`.

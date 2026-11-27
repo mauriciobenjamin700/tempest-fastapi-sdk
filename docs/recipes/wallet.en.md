@@ -1,3 +1,7 @@
+---
+description: "Use to keep a balance per person and pay Pix payouts without lost credits or double payouts; covers models, held credits, OpenPix or manual payouts, fees, `WalletLedger` and the router."
+---
+
 # Wallet and Pix payouts
 
 A platform that takes payments by Pix and passes money on to someone — a

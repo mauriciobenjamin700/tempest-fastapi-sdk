@@ -1,3 +1,7 @@
+---
+description: "Web Push (VAPID) dispatch and subscription schemas."
+---
+
 # API Reference: `tempest_fastapi_sdk.webpush`
 
 Web Push (VAPID) dispatch and subscription schemas.

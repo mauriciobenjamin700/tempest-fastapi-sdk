@@ -1,3 +1,7 @@
+---
+description: "Rodar dois provedores de Pix lado a lado durante a migração de um para o outro."
+---
+
 # `tempest_fastapi_sdk.integrations.payment.routing`
 
 Rodar dois provedores de Pix lado a lado durante a migração de um para o outro.

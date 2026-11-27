@@ -1,3 +1,7 @@
+---
+description: "Índice do fluxo de conta local (signup, ativação, login, reset) com `UserAuthService` e `make_auth_router`; mapeia cada tarefa à subpágina, mais segurança e recap."
+---
+
 # Bundled auth flow (signup / activate / login / reset)
 
 Desde v0.31.0 o SDK fornece o ciclo completo de conta local — signup com email/senha, ativação por link, login com JWT pair, reset de senha — via `UserAuthService` + `make_auth_router`. **Endpoints prontos pra mount** (incluindo `POST /auth/refresh` desde v0.65.0), templates Jinja2 bundled, settings flags controlando se o link sai por e-mail ou no body da resposta, e cinco modos pré-pensados: produção, dev com SMTP local, dev sem SMTP, CI e backend-only.

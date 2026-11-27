@@ -1,3 +1,7 @@
+---
+description: "Use para guardar fatos em vez de estado; cobre `SqlEventStore` e `KurrentDBEventStore`, concorrência otimista, outbox, projeções e agregados."
+---
+
 # Event sourcing (event store)
 
 Em vez de guardar o estado atual de um pedido numa linha que você atualiza,

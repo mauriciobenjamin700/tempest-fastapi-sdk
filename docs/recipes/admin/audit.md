@@ -1,3 +1,7 @@
+---
+description: "Use para mostrar no admin quem mudou o quê via `audit_model`, a atividade recente no dashboard e restaurar uma versão pelo histórico."
+---
+
 # Histórico de auditoria
 
 Use para mostrar quem mudou o quê no detail, a atividade recente no dashboard e desfazer pelo histórico.

@@ -1,3 +1,7 @@
+---
+description: "Renderização no servidor: componentes Python tipados renderizados para HTML."
+---
+
 # `tempest_fastapi_sdk.ssr`
 
 Renderização no servidor: componentes Python tipados renderizados para HTML.

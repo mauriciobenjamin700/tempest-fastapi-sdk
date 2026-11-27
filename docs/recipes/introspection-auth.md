@@ -1,3 +1,7 @@
+---
+description: "Use quando o serviço é resource server e valida bearer opaco no provedor upstream; contém `IntrospectionAuth`, `get_claims`, `audiences`, cache, claims customizadas e testes."
+---
+
 # Auth por introspecção (resource server)
 
 Nem todo serviço emite os próprios tokens. Muitas vezes o seu serviço é

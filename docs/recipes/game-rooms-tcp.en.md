@@ -1,3 +1,7 @@
+---
+description: "Use when the game client speaks raw TCP instead of WebSocket; shows the room server over TCP frames next to the WebSocket one and the Android client."
+---
+
 # Online game rooms (TCP)
 
 Some clients do not speak WebSocket, or already have their whole multiplayer

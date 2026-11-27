@@ -1,3 +1,7 @@
+---
+description: "Use to guard routes by token, role and permission, with the `JWTUtils` built in `create_app`."
+---
+
 # JWT bearer, current user and role dependencies
 
 Use to guard routes by token, role and permission, with the `JWTUtils` built in `create_app`.

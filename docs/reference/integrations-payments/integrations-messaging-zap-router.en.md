@@ -1,3 +1,7 @@
+---
+description: "Opt-in FastAPI router receiving the zap-api webhook."
+---
+
 # API Reference: `tempest_fastapi_sdk.integrations.messaging.zap.router`
 
 Opt-in FastAPI router receiving the zap-api webhook.

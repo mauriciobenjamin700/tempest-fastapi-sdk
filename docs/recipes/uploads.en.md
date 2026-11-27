@@ -1,3 +1,7 @@
+---
+description: "Use to validate and store `UploadFile` on disk or MinIO/S3 with `UploadUtils`; covers extension allowlists, `ImageMediaTypeEnum`, magic bytes, `replace`, `write_stream` and migration."
+---
+
 # Uploads — local disk + S3 / MinIO
 
 `UploadUtils` validates and stores FastAPI's `UploadFile`. The backend is

@@ -1,3 +1,7 @@
+---
+description: "Use quando o modelo precisa devolver um objeto Pydantic preenchido, e para fixar os parâmetros de geração com `GenerationConfig`."
+---
+
 # Config tipada e saída estruturada
 
 Use quando o modelo precisa devolver um objeto Pydantic preenchido, e para fixar os parâmetros de geração com `GenerationConfig`.

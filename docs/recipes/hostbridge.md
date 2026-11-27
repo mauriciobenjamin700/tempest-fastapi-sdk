@@ -1,3 +1,7 @@
+---
+description: "Use quando o serviço no WSL precisa agir no host: ler arquivos, rodar comandos e controlar energia, exposto por `make_hostbridge_router`."
+---
+
 # Controle do host (arquivos, comandos, energia)
 
 Seu serviço roda dentro do WSL e precisa agir na **máquina** que o hospeda:

@@ -1,3 +1,7 @@
+---
+description: "Use to stop losing events that fail in the consumer; covers dead-letter, broker-delayed retry, metrics, prefetch, idempotency and tracing through the queue."
+---
+
 # Event-path reliability
 
 Use to stop losing failing messages: dead-letter, delayed retry, metrics, prefetch, idempotency and tracing through the queue.

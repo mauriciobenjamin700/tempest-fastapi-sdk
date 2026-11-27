@@ -1,3 +1,7 @@
+---
+description: "Use para tornar retry de POST seguro com `Idempotency-Key`; contém `IdempotencyMiddleware`, escopo por chamador, setup em memória e Redis, cliente e backend customizado."
+---
+
 # Idempotência
 
 `IdempotencyMiddleware` implementa o padrão `Idempotency-Key` usado por Stripe, AWS, GitHub e Plaid: o cliente envia um header único e, **assim que a primeira requisição completa**, o servidor devolve a mesma resposta a qualquer retry — sem duplicar linha no banco / cobrar duas vezes.

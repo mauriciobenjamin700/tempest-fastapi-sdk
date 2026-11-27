@@ -1,3 +1,7 @@
+---
+description: "Blocos de mensageria: conversas, mensagens, mídia e confirmações de leitura."
+---
+
 # `tempest_fastapi_sdk.chat`
 
 Blocos de mensageria: conversas, mensagens, mídia e confirmações de leitura.

@@ -1,3 +1,7 @@
+---
+description: "Use to generate an accessible HTML form from a Pydantic schema; covers per-type mapping, per-field tweaks, reading submissions, `form_dependency` and file uploads."
+---
+
 # Forms from Pydantic schemas
 
 The schema that validates the request already describes the form: names,

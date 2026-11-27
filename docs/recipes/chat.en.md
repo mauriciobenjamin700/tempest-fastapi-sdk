@@ -1,3 +1,7 @@
+---
+description: "Use to add chat with conversations and messages; covers the base tables, `ChatService` (replies, receipts, attachments, reactions, groups), `make_chat_router` and SSE."
+---
+
 # Chat (conversations + messages)
 
 A ready threaded-chat module over the SDK primitives (`BaseModel` /

@@ -1,3 +1,7 @@
+---
+description: "Use when the service stores and serves the same file: `FileStoreUtils` unifies upload, download and presigned URLs over local disk or MinIO/S3."
+---
+
 # Unified file store — `FileStoreUtils`
 
 Storing a file, serving it back and signing a temporary URL usually means

@@ -1,3 +1,7 @@
+---
+description: "Use to declare tables with `BaseModel`: free columns, centralized table names, the constraint naming convention, composite uniques and `get_table_name()`."
+---
+
 # 1. The base model
 
 Use to declare tables with `BaseModel`: centralized table names, the constraint naming convention and the helpers you get for free.

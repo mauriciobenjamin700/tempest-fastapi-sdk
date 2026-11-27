@@ -1,3 +1,7 @@
+---
+description: "Use to publish and consume events by channel with `MessageBroker`; covers class-based consumers and publishers and Kafka with key, group, commit and `KafkaSettings`."
+---
+
 # Messaging with `MessageBroker`
 
 Use to publish and consume events by channel, with class-based consumers and publishers and Kafka (key, group and commit).

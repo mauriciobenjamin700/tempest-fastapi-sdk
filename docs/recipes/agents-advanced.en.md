@@ -1,3 +1,7 @@
+---
+description: "Use when the basic agent is not enough: structured output, three-layer memory, on-demand skills, delegation, criterion and critique loops, and moderation."
+---
+
 # AI agents (advanced)
 
 This page picks up where [AI agents](agents.md) left off. There, an agent

@@ -1,3 +1,7 @@
+---
+description: "Use ao atualizar o SDK com mudanças que quebram compatibilidade; índice das subpáginas por faixa de versão e lista de todas as mudanças por release."
+---
+
 # Guia de migração
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.

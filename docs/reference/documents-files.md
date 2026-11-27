@@ -1,3 +1,7 @@
+---
+description: "Índice dos módulos: pDF, planilhas, slides, object storage e upload, exportação e apagamento de dados (LGPD), registro de artefatos e a prévia de compartilhamento."
+---
+
 # Referência: Documentos e arquivos
 
 PDF, planilhas, slides, object storage e upload, exportação e apagamento de dados (LGPD), registro de artefatos e a prévia de compartilhamento.

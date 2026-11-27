@@ -1,3 +1,7 @@
+---
+description: "A camada de dados: `BaseModel`, `BaseRepository`, sessão assíncrona, mixins de model, migrations e hooks do Alembic."
+---
+
 # `tempest_fastapi_sdk.db`
 
 A camada de dados: `BaseModel`, `BaseRepository`, sessão assíncrona, mixins de model, migrations e hooks do Alembic.

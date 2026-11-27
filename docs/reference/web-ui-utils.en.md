@@ -1,3 +1,7 @@
+---
+description: "Index of the web and utilities modules: SSR pages and the `ui` layer, utilities, geolocation, host control, system checks and the testing tools."
+---
+
 # API Reference: Web, UI and utilities
 
 The API reference is generated from the SDK's English docstrings via

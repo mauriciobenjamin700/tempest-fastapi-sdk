@@ -1,3 +1,7 @@
+---
+description: "Use to pick an AI model through an enum instead of a string id; covers `TextModelEnum`, `EmbeddingModelEnum`, rerank, vision, image and audio, plus e5 role prefixes."
+---
+
 # Choosing a model
 
 Every AI object in the SDK takes a **model id as a string**:

@@ -1,3 +1,7 @@
+---
+description: "Helpers de teste para quem consome o SDK: app, banco, cliente e fixtures."
+---
+
 # `tempest_fastapi_sdk.testing`
 
 Helpers de teste para quem consome o SDK: app, banco, cliente e fixtures.

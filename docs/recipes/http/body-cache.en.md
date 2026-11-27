@@ -1,3 +1,7 @@
+---
+description: "Use to refuse a large body with 413 before parsing and answer 304 with ETag without mixing authenticated requests."
+---
+
 # Body size limit and HTTP cache (ETag / 304)
 
 Use to refuse a large body with 413 before parsing and answer 304 with ETag without mixing authenticated requests.

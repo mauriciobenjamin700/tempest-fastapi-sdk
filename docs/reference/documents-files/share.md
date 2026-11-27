@@ -1,3 +1,7 @@
+---
+description: "Prévia de link compartilhado: a página Open Graph e a imagem do card."
+---
+
 # `tempest_fastapi_sdk.share`
 
 Prévia de link compartilhado: a página Open Graph e a imagem do card.

@@ -1,3 +1,7 @@
+---
+description: "Index of the inbound HTTP layer: points to the subpage for bootstrap, JWT, auth, rate limiting, body and cache, webhooks, upload and extras."
+---
+
 # HTTP layer
 
 Middlewares, dependencies, routers and middleware composition for the API surface.

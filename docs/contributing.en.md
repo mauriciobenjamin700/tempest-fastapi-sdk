@@ -1,3 +1,7 @@
+---
+description: "Use before contributing: the issue-first flow, dev environment, quality gates, tests, docs, commit message style and the release process."
+---
+
 # Contributing
 
 !!! tip "The most useful contribution is an issue — not a PR"

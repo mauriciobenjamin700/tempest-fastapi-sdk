@@ -1,3 +1,7 @@
+---
+description: "Use para medir antes de otimizar com `tempest model bench`; contém cronometrar qualquer callable, amostrar CPU, GPU, RAM e energia e ranquear modelos por score e Pareto."
+---
+
 # Medir: tempo, CPU, GPU, RAM, energia e comparação
 
 Use para medir antes de otimizar, cronometrar qualquer callable, amostrar recursos e energia e ranquear modelos por score e Pareto.

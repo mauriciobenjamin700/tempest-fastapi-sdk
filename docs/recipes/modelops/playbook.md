@@ -1,3 +1,7 @@
+---
+description: "Consulte para decidir onde otimizar um modelo com base em medições; contém escolha do estimador, custo do transporte, custo do monitoramento, cold start e ordem de ataque."
+---
+
 # Playbook: onde o tempo e os bytes vão
 
 Consulte as decisões medidas, em ordem de ataque: estimador, transporte, custo do monitoramento e cold start.

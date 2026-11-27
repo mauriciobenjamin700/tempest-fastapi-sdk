@@ -1,3 +1,7 @@
+---
+description: "Use when upgrading the SDK across breaking changes; index of the per-version-range subpages and the list of all changes by release."
+---
+
 # Migration guide
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.

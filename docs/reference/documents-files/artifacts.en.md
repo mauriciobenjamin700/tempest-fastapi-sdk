@@ -1,3 +1,7 @@
+---
+description: "Versioned binary artifact registry — DB-backed, activatable, digested."
+---
+
 # API Reference: `tempest_fastapi_sdk.artifacts`
 
 Versioned binary artifact registry — DB-backed, activatable, digested.

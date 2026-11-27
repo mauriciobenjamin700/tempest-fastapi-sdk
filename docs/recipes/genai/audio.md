@@ -1,3 +1,7 @@
+---
+description: "Use para transcrever áudio (STT) e gerar voz (TTS), escolher idioma e modelo de voz pela licença e por onde roda."
+---
+
 # Áudio: STT e TTS
 
 Use para transcrever áudio (STT) e gerar voz (TTS), escolher idioma e modelo de voz pela licença e por onde roda.

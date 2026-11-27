@@ -1,3 +1,7 @@
+---
+description: "Use para enviar email SMTP com `EmailUtils`; cobre `EmailSettings`, TLS x SSL, anexos, `send_many`, templates Jinja2 e o modo desligado."
+---
+
 # Email transacional
 
 Envio de email via SMTP com `EmailUtils` — corpo texto + alternativa HTML,

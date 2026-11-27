@@ -1,3 +1,7 @@
+---
+description: "Use para ver fluxos completos de GenAI self-hosted: carregar modelo só se couber, RAG sobre PDFs, busca web com SearXNG, voz local e endpoint de transcrição."
+---
+
 # Exemplos de GenAI — fluxos completos
 
 A [receita de IA generativa](recipes/genai.md) documenta cada peça; aqui

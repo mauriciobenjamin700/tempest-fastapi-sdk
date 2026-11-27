@@ -1,3 +1,7 @@
+---
+description: "Geração de imagem local sobre o `diffusers` do HuggingFace."
+---
+
 # `tempest_fastapi_sdk.genai.image`
 
 Geração de imagem local sobre o `diffusers` do HuggingFace.

@@ -1,3 +1,7 @@
+---
+description: "Use para cobrar Pix sem acoplar o service ao provedor (OpenPix, Mercado Pago); contém `PixChargeRequest`, `PixCharge`, troca de provedor, arquitetura, estados, webhook e adapter."
+---
+
 # Protocolo de Pix: um contrato, vários provedores
 
 Seu serviço cobra por Pix. Hoje o provedor é o OpenPix; amanhã pode ser o

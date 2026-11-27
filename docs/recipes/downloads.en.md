@@ -1,3 +1,7 @@
+---
+description: "Use to serve files with `DownloadUtils` from local disk or MinIO/S3; covers path traversal, streaming bytes, `Content-Type` and `Content-Disposition`."
+---
+
 # Downloads
 
 `DownloadUtils` serves files for download/inline — from **local disk** or

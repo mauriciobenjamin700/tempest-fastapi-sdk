@@ -1,3 +1,7 @@
+---
+description: "What is loaded in memory right now, and what it is costing."
+---
+
 # API Reference: `tempest_fastapi_sdk.genai.inventory`
 
 What is loaded in memory right now, and what it is costing.

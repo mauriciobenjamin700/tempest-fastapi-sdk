@@ -1,3 +1,7 @@
+---
+description: "Use para enviar mensagens de WhatsApp pelo gateway zap-api com o cliente gerado; contém envio versus entrega, retry com idempotência, três formas de mídia, corpo `bytes` e regeneração."
+---
+
 # WhatsApp pela zap-api
 
 O `zap-api` é o gateway de WhatsApp da casa. O SDK ships o cliente inteiro

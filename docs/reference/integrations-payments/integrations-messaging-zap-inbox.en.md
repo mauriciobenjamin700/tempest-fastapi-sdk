@@ -1,3 +1,7 @@
+---
+description: "The service layer every zap-api consumer writes: claim, track and send."
+---
+
 # API Reference: `tempest_fastapi_sdk.integrations.messaging.zap.inbox`
 
 The service layer every zap-api consumer writes: claim, track and send.

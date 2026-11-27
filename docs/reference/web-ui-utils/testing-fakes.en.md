@@ -1,3 +1,7 @@
+---
+description: "Stand-ins for the third parties a service talks to."
+---
+
 # API Reference: `tempest_fastapi_sdk.testing.fakes`
 
 Stand-ins for the third parties a service talks to.

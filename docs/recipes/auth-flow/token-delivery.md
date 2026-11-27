@@ -1,3 +1,7 @@
+---
+description: "Use para decidir se o par de JWT sai no corpo (bearer), em cookie ou nos dois com `AUTH_TOKEN_DELIVERY`; contém o modo cookie e o modo both."
+---
+
 # Entrega de token: bearer, cookie ou os dois
 
 Use para decidir se o par de JWT sai no corpo, em cookie ou nos dois.

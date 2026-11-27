@@ -1,3 +1,7 @@
+---
+description: "RAG: contexto para o LLM a partir de busca na web e de PDFs."
+---
+
 # `tempest_fastapi_sdk.genai.rag`
 
 RAG: contexto para o LLM a partir de busca na web e de PDFs.

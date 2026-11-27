@@ -1,3 +1,7 @@
+---
+description: "Use para consultar a API REST do marketplace numa tabela: auth, orgs, convites, catálogo, estoque, pedidos, reviews, notificações e payload de checkout."
+---
+
 # Mapa de endpoints
 
 Toda a API REST do marketplace numa tabela só, pronta pra colar no contrato do frontend.

@@ -1,3 +1,7 @@
+---
+description: "Confirmar um Pix no provedor antes de liberar qualquer coisa."
+---
+
 # `tempest_fastapi_sdk.integrations.payment.settlement`
 
 Confirmar um Pix no provedor antes de liberar qualquer coisa.

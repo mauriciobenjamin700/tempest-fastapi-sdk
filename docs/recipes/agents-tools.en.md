@@ -1,3 +1,7 @@
+---
+description: "Use to write agent tools that call an external API or structure free text; covers `@tool`, `typed_tool`, `text_tool`, `schema_of` and `final_answer_tool`."
+---
+
 # AI agents (tools)
 
 Almost every tool a service writes falls into one of three families:

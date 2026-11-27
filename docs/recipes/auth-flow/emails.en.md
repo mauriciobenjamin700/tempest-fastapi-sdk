@@ -1,3 +1,7 @@
+---
+description: "Use to understand token, link and template in account emails, apply your brand and override the Jinja2 templates; covers the context variables and an example."
+---
+
 # Emails: anatomy, brand and templates
 
 Use to understand how link, template and URL fit together, put your brand on the emails and override the Jinja2 templates.

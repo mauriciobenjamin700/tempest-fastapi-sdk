@@ -1,3 +1,7 @@
+---
+description: "Use para modelar o marketplace: diagrama UML de classes, ER físico, enums, invariantes e o mapeamento de cada entidade para um primitivo do SDK."
+---
+
 # Modelo de domínio
 
 Esta página traz o **modelo conceitual** (UML de classe), o **modelo físico** (ER) e o glossário dos atributos de cada entidade. Os diagramas usam Mermaid — renderiza automaticamente no MkDocs Material.

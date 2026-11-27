@@ -1,3 +1,7 @@
+---
+description: "Use to generate images locally with diffusion via `ImageGenerator`; covers turbo vs full config, seeds, img2img, an HTTP route, freeing the GPU, `pipeline_kwargs` and the scheduler."
+---
+
 # Image generation (local)
 
 The SDK already generated text, understood images (VLM), embedded,

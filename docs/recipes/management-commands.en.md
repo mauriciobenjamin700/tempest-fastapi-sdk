@@ -1,3 +1,7 @@
+---
+description: "Use to register your own commands in the `tempest` CLI, like Django's `manage.py`; covers the `src/commands.py` convention, custom location, collisions and nested groups."
+---
+
 # Management commands (project `tempest <cmd>`)
 
 Plug your own commands into the `tempest` CLI — the way Django lets you

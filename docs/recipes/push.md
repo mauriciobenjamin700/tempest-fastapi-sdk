@@ -1,3 +1,7 @@
+---
+description: "Use para notificar web e mobile num fluxo só; contém tabela de aparelhos, transportes Web Push e FCM, poda de tokens renegados, fan-out, testes e FCM desligado."
+---
+
 # Push (web + mobile num fluxo só)
 
 Um produto que tem site **e** app acaba com duas APIs de notificação: uma

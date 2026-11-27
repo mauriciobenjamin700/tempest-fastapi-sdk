@@ -1,3 +1,7 @@
+---
+description: "Stripe, from the API key to the verified webhook."
+---
+
 # API Reference: `tempest_fastapi_sdk.integrations.payment.stripe`
 
 Stripe, from the API key to the verified webhook.

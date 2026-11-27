@@ -1,3 +1,7 @@
+---
+description: "Use to learn the SDK conventions by building the Users feature end to end; covers layout, settings, model, schemas, exceptions, repository, service, controller, router and pagination."
+---
+
 # Tutorial — building the *Users* feature
 
 This tutorial walks through wiring the **Users** feature using every SDK convention. By the end you'll have:

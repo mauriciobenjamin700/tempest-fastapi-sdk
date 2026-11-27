@@ -1,3 +1,7 @@
+---
+description: "Use antes de projetar um agente: o laço por dentro, o que o modelo vê, custo do contexto, orçamento, quando usar ferramenta, skill ou delegação, e modos de falha."
+---
+
 # Agentes: como funcionam por dentro
 
 As outras páginas mostram **o que escrever**. Esta explica **o que acontece**

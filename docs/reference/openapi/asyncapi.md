@@ -1,3 +1,7 @@
+---
+description: "Gerar um cliente WebSocket tipado a partir de um documento AsyncAPI 3.0."
+---
+
 # `tempest_fastapi_sdk.asyncapi`
 
 Gerar um cliente WebSocket tipado a partir de um documento AsyncAPI 3.0.

@@ -1,3 +1,7 @@
+---
+description: "Use para configurar logs JSON com request ID; contém `configure_logging`, arquivo por nível, rotação, redação de dados, `make_logs_router` e `AccessLogMiddleware`."
+---
+
 # Logging
 
 Nesta receita você configura logs JSON estruturados com correlação por request, um arquivo por nível de severidade e um endpoint HTTP para lê-los. O objetivo é que cada linha de log seja parseável, rastreável até a requisição que a originou e inspecionável sem SSH no servidor.

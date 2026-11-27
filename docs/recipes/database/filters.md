@@ -1,3 +1,7 @@
+---
+description: "Use para filtrar no repository por `campo__operador`; contém quando chave ou valor é recusado, como a paginação herda os operadores e o nome do tamanho de página."
+---
+
 # 4. Filtros por convenção
 
 Use para filtrar por `campo__operador` e saber quando uma chave ou valor é recusado e como a paginação herda os operadores.

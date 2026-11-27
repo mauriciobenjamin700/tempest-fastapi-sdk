@@ -1,3 +1,7 @@
+---
+description: "Use para ligar o fluxo de auth do zero: extras `[auth]`/`[email]`, `AsyncDatabaseManager`, `EmailUtils`, `UserAuthService`, `make_auth_router` e o `UserTokenModel`."
+---
+
 # Setup mínimo e `UserTokenModel`
 
 Use para ligar o fluxo: extras, os quatro objetos (`AsyncDatabaseManager`, `EmailUtils`, `UserAuthService`, `make_auth_router`) e o `UserTokenModel` concreto.

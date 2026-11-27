@@ -1,3 +1,7 @@
+---
+description: "Shared utility helpers exposed at the module level."
+---
+
 # API Reference: `tempest_fastapi_sdk.utils`
 
 Shared utility helpers exposed at the module level.

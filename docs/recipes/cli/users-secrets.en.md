@@ -1,3 +1,7 @@
+---
+description: "Use to create and manage users from the CLI (password, MFA reset, deactivate) and generate, fill in and rotate `.env` secrets, including VAPID keys."
+---
+
 # Users and secrets
 
 Use to create and manage users (MFA included) and to generate, fill in and rotate the `.env` secrets (`tempest user`, `tempest secrets`).

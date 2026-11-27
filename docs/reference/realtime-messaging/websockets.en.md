@@ -1,3 +1,7 @@
+---
+description: "WebSocket primitives — authenticated router + connection hub."
+---
+
 # API Reference: `tempest_fastapi_sdk.websockets`
 
 WebSocket primitives — authenticated router + connection hub.

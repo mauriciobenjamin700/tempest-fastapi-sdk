@@ -1,3 +1,7 @@
+---
+description: "Use para endurecer o serviço; contém `AttemptThrottle` contra força bruta, `typ` do JWT, tokens opacos, estáticos com headers, `CSRFMiddleware`, cookies, IP do cliente e `HoneypotBanMiddleware`."
+---
+
 # Segurança
 
 Primitivos defensivos: rate-limit por falha (login/OTP), tokens opacos single-use, serviço de arquivos estáticos endurecido com headers de segurança, helpers de cookie HttpOnly/Secure/SameSite, e resolvedor de IP do cliente atrás de proxies confiáveis.

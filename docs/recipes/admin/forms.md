@@ -1,3 +1,7 @@
+---
+description: "Use para ajustar o formulário do admin: `choices`, upload, FK com autocomplete, inlines, muitos-para-muitos, widgets, senha e `exclude_fields`."
+---
+
 # Campos do formulário
 
 Use para ajustar o formulário: choices, upload de arquivo, FK com autocomplete, inlines, muitos-para-muitos, widgets, senha e colunas escondidas.

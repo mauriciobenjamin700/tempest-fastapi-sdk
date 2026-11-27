@@ -64,6 +64,24 @@ Por isso ele não tem espelho `.en.md` nem entrada no `nav:`.
    páginas para âncoras da página antiga passam a apontar para a subpágina
    — confira no HTML buildado, não à mão. Modelo: `docs/recipes/genai.md`.
 
+10. **Toda página declara `description:` de uma linha** no front matter, nas
+    duas línguas (`tests/test_docs_description_guard.py`, #876): não vazia,
+    sem bloco YAML (`>`/`|`), até 200 caracteres. Escreva lendo a página,
+    voltada a decidir se vale abri-la — "Use para X; contém Y." /
+    "Use to X; covers Y." — e nunca prometa o que a página não mostra. É a
+    linha que o `llms.txt` põe depois de cada link
+    (`- [título](https://…/página.md): descrição`) e a `<meta name="description">` do
+    Material. Na referência, a descrição de página de módulo é a linha "o
+    que cobre" que a página já abre. **Seção abre dizendo o que resolve**:
+    a primeira frase depois de um `##`/`###` responde "quando eu uso isto?".
+
+    O hook `mkdocs_hooks/llmstxt.py` serve cada página também como `.md`,
+    no caminho espelhado de `docs/` (`docs/recipes/genai.md` →
+    `/recipes/genai.md`, o `.en.md` → `/en/recipes/genai.md`), e escreve
+    `llms.txt` (índice EN), `llms-core.txt` (instalação, arquitetura, padrão
+    de serviço, tutorial e índice de receitas, abaixo de 400 000 bytes) e
+    `llms-full.txt` (tudo menos a referência). Guard: `tests/test_llmstxt.py`.
+
 ## O que fica fora da ordem alfabética, de propósito
 
 Abas de topo (`Início → Instalação → Arquitetura → Tutorial → …`), páginas de

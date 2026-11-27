@@ -1,3 +1,7 @@
+---
+description: "Use to open the engine and sessions with `AsyncDatabaseManager`: per-request session, lifespan, health check, use outside a request and SQLite with WAL and foreign keys."
+---
+
 # 2. Connect to the database
 
 Use to open the engine and sessions with `AsyncDatabaseManager`: per-request session, lifespan, health check, use outside a request and SQLite (WAL, foreign keys).

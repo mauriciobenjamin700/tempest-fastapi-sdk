@@ -1,3 +1,7 @@
+---
+description: "Geração de planilhas `.xlsx` que o destinatário consegue usar."
+---
+
 # `tempest_fastapi_sdk.spreadsheet`
 
 Geração de planilhas `.xlsx` que o destinatário consegue usar.

@@ -1,3 +1,7 @@
+---
+description: "A superfície do OpenPix: cliente, schemas e webhook."
+---
+
 # `tempest_fastapi_sdk.integrations.payment.openpix`
 
 A superfície do OpenPix: cliente, schemas e webhook.

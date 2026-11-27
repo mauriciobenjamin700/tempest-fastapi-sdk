@@ -1,3 +1,7 @@
+---
+description: "Use to sync offline-first mobile apps or PWAs by delta, deletions included; covers `BaseRepository.changes_since`, idempotent push, pull, the endpoint and the watermark protocol."
+---
+
 # Offline-first sync (delta)
 
 Mobile apps and PWAs work offline: they capture data with no network and sync

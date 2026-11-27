@@ -1,3 +1,7 @@
+---
+description: "Os schemas Pydantic base: `BaseSchema`, paginação, envelope de resposta e filtros."
+---
+
 # `tempest_fastapi_sdk.schemas`
 
 Os schemas Pydantic base: `BaseSchema`, paginação, envelope de resposta e filtros.

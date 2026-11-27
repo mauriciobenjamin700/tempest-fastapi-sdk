@@ -1,3 +1,7 @@
+---
+description: "Use para versionar binários trocados em runtime (modelos ONNX, bundles) com uma versão ativa por nome; contém `ArtifactRegistry`, digest, manifesto e ação admin."
+---
+
 # Registro de artefatos versionados
 
 Alguns serviços servem **binários que trocam em runtime**: modelos ONNX, bundles de regras, arquivos de configuração compilados. O padrão é sempre o mesmo — um artefato lógico (`name`) tem **várias versões**, e exatamente **uma está "ativa"** por vez. Um operador sobe uma versão nova no object storage e a ativa pelo painel admin; os endpoints resolvem a versão ativa a cada request, sem redeploy.

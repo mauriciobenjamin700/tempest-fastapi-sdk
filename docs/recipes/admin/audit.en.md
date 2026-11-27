@@ -1,3 +1,7 @@
+---
+description: "Use to show in the admin who changed what via `audit_model`, recent activity on the dashboard and restoring a version from history."
+---
+
 # Audit history
 
 Use to show who changed what on the detail page, recent activity on the dashboard and undo from the history.

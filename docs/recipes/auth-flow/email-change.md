@@ -1,3 +1,7 @@
+---
+description: "Use para trocar o e-mail logado, re-verificar o atual, recuperar a conta com a caixa perdida e renovar a sessão com o refresh token."
+---
+
 # Trocar e recuperar e-mail
 
 Use para trocar o e-mail logado, re-verificar o atual, recuperar a conta quando a caixa se perdeu e renovar a sessão com o refresh token.

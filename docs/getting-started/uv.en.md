@@ -1,3 +1,7 @@
+---
+description: "Use if you have never used Python tooling: install `uv`, verify it, enable shell completion, keep it updated and the map of everyday commands."
+---
+
 # Install uv
 
 This is the first page of the beginner track. It assumes **zero** knowledge of Python tooling: if you have never created a virtual environment in your life, start right here.

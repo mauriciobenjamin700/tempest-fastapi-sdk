@@ -1,3 +1,7 @@
+---
+description: "Use para criar o primeiro projeto com o SDK; contém o caminho do zero arquivo a arquivo, o atalho de projeto real e os cinco comandos do dia a dia."
+---
+
 # Seu primeiro projeto
 
 Você tem o `uv` ([página 1](uv.md)) e sabe escolher a versão do Python ([página 2](python-versions.md)). Agora vamos criar um projeto do zero, instalar o SDK e subir uma API que responde de verdade — em menos de dez comandos.

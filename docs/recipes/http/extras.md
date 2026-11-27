@@ -1,3 +1,7 @@
+---
+description: "Use para emitir o header `Link` de paginação, expor `/tool-spec`, subir o uvicorn com `run_server` e compor settings com mixins."
+---
+
 # Link de paginação, tool-spec, servidor e settings
 
 Use para emitir o header `Link` de paginação, expor `/tool-spec`, subir o uvicorn com `run_server` e compor settings com mixins.

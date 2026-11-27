@@ -1,3 +1,7 @@
+---
+description: "Use to choose between `[cli-ops]` and `[cli]`, scaffold a new service with `tempest new` and bring layers or an old project to the standard with `tempest generate`."
+---
+
 # Install and scaffold a service
 
 Use to choose between `[cli-ops]` and `[cli]`, scaffold a new service and bring an existing project to the standard (`tempest new`, `tempest generate`).

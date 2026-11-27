@@ -1,3 +1,7 @@
+---
+description: "Use to document each route's error `code` values in Swagger; covers `code` on the exception, `error_responses`, `@raises` with `TempestAPIRouter` and `tempest openapi-errors --check`."
+---
+
 # Errors in OpenAPI (Swagger / ReDoc)
 
 The SDK serializes **every** `AppException` into a single envelope —

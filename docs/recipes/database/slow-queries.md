@@ -1,3 +1,7 @@
+---
+description: "Use para logar toda query acima de um limiar com `SlowQueryLogger`, um listener anexado à engine no boot."
+---
+
 # 9. Detectar queries lentas
 
 Use para logar queries acima de um limite com `SlowQueryLogger`.

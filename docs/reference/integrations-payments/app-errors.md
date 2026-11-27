@@ -1,3 +1,7 @@
+---
+description: "Erros que o app cliente reporta de volta ao serviço: schema, model e router."
+---
+
 # `tempest_fastapi_sdk.app_errors`
 
 Erros que o app cliente reporta de volta ao serviço: schema, model e router.

@@ -1,3 +1,7 @@
+---
+description: "Use para casar texto digitado com nomes conhecidos e achar cidades no texto; cobre `FuzzyIndex`, `parse_trip_intent`, busca semântica e tool de agente."
+---
+
 # Busca aproximada (fuzzy) e cidades em texto
 
 O usuário escreve "moro em sao jose dos campos - sp", "vou pra floripa" ou

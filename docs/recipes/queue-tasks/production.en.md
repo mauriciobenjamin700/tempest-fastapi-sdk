@@ -1,3 +1,7 @@
+---
+description: "Use to run the TaskIQ worker and scheduler in production; covers file-based healthcheck, the checker, `docker-compose.yml` and lifespan scheduling with a single-replica lease."
+---
+
 # Workers, healthcheck and scheduler in production
 
 Use to run the worker and scheduler in production, check they are alive and schedule from the lifespan with a single replica.

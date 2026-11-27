@@ -1,3 +1,7 @@
+---
+description: "Use to generate embeddings (torch or ONNX), batch concurrent inference and share and inspect the loaded models."
+---
+
 # Embeddings and scale
 
 Use to generate embeddings (torch or ONNX), batch concurrent inference and share and inspect the loaded models.

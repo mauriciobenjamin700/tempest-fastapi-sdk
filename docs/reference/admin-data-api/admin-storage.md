@@ -1,3 +1,7 @@
+---
+description: "A fonte de dados do navegador de storage do admin: um bucket de object store."
+---
+
 # `tempest_fastapi_sdk.admin.storage`
 
 A fonte de dados do navegador de storage do admin: um bucket de object store.

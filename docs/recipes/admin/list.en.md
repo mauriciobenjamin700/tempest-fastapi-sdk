@@ -1,3 +1,7 @@
+---
+description: "Use to boost the admin list view: related counts, CSV/XLSX import, duplicate, bulk edit, lenses and counting on large tables."
+---
+
 # List view: counts, import and bulk edits
 
 Use to power up the list view: related counts, CSV/XLSX import, duplicate, bulk edit, lenses and counting large tables.

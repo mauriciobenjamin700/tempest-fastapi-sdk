@@ -1,3 +1,7 @@
+---
+description: "Use para montar um serviço inteiro que roda: settings por mixins, migração no startup, cadastro e login, upload protegido e teste ponta a ponta."
+---
+
 # Serviço completo: settings, migrations, auth, upload e teste
 
 Use esta página quando você quer **um serviço inteiro que roda**, com as peças

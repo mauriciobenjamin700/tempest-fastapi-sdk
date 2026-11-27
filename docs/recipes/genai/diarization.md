@@ -1,3 +1,7 @@
+---
+description: "Use para separar um áudio por falante (sherpa-onnx), reconhecer quem é por perfil de voz e servir isso por HTTP ou CLI."
+---
+
 # Quem falou o quê: diarização
 
 Use para separar um áudio por falante (sherpa-onnx), reconhecer quem é por perfil de voz e servir isso por HTTP ou CLI.

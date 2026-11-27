@@ -1,3 +1,7 @@
+---
+description: "Layout: os contêineres estruturais em que uma página organiza o conteúdo."
+---
+
 # `tempest_fastapi_sdk.ui.layout`
 
 Layout: os contêineres estruturais em que uma página organiza o conteúdo.

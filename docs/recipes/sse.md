@@ -1,3 +1,7 @@
+---
+description: "Use para empurrar eventos servidor para navegador por SSE; contém endpoint, heartbeat, backpressure, broadcast com `SSEBroker` e bridge Redis/RabbitMQ multi-worker, e autenticação do stream."
+---
+
 # Server-Sent Events (SSE)
 
 SSE empurra dados do servidor pro navegador por **uma conexão HTTP de

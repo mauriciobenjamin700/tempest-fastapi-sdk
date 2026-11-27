@@ -1,3 +1,7 @@
+---
+description: "Gerar schemas Pydantic e um cliente HTTP tipado a partir de um documento OpenAPI."
+---
+
 # `tempest_fastapi_sdk.openapi`
 
 Gerar schemas Pydantic e um cliente HTTP tipado a partir de um documento OpenAPI.

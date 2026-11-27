@@ -1,3 +1,7 @@
+---
+description: "Use to manage model weights on the HuggingFace Hub; covers the cache, pinning a revision, downloading before serving, disk checks, offline mode, cache cleanup and `ModelRef`."
+---
+
 # Model weights (Hub lifecycle)
 
 Loading a model by id is the easy half. The other half is everything the

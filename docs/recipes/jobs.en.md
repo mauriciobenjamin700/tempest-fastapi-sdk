@@ -1,3 +1,7 @@
+---
+description: "Use to give queued long-running work a visible status; covers the job table, worker, polling, recovering jobs from dead workers, listing, cancelling, progress and stages."
+---
+
 # Jobs — long work with a status
 
 A queue hands the call to a worker. It answers none of what the person
